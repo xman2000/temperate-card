@@ -1,0 +1,213 @@
+blueprint:
+  name: Temperate changeover
+  description: >-
+    Switches a heat/cool thermostat between Heat and Cool from one comfort range.
+    Home Assistant owns the range: "heat below" and "cool above" live in two
+    input_numbers and are copied to the thermostat's heat and cool setpoints.
+    Two booleans allow or block each mode. If the thermostat's mode or setpoints
+    move away from what this automation asked for (someone used the thermostat
+    itself), the manual override turns on and the automation leaves it alone
+    until the override is turned off, which also puts the range back.
+    Pairs with the Temperate card (custom:temperate-card).
+  domain: automation
+  input:
+    thermostat:
+      name: Thermostat
+      selector:
+        entity:
+          filter:
+            - domain: climate
+    heat_allowed:
+      name: Heat allowed
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+    cool_allowed:
+      name: Cool allowed
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+    manual_override:
+      name: Manual override
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+    heat_below:
+      name: Heat below
+      description: Heat comes on when the room drops below this.
+      selector:
+        entity:
+          filter:
+            - domain: input_number
+    cool_above:
+      name: Cool above
+      description: Cooling comes on when the room rises above this.
+      selector:
+        entity:
+          filter:
+            - domain: input_number
+    commanded_mode:
+      name: Commanded mode
+      description: Remembers the last mode this automation set.
+      selector:
+        entity:
+          filter:
+            - domain: input_text
+    settle_time:
+      name: Settle time
+      description: How long a difference must last before it counts as a change on the thermostat.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: seconds
+
+mode: queued
+max: 25
+
+variables:
+  thermostat: !input thermostat
+  heat_allowed: !input heat_allowed
+  cool_allowed: !input cool_allowed
+  manual_override: !input manual_override
+  heat_below: !input heat_below
+  cool_above: !input cool_above
+  commanded_mode: !input commanded_mode
+  settle_time: !input settle_time
+
+triggers:
+  - trigger: state
+    entity_id: !input thermostat
+    attribute: current_temperature
+    id: evaluate
+  - trigger: state
+    entity_id:
+      - !input heat_allowed
+      - !input cool_allowed
+      - !input heat_below
+      - !input cool_above
+    id: evaluate
+  - trigger: state
+    entity_id: !input thermostat
+    attribute: target_temp_low
+    id: setpoint
+  - trigger: state
+    entity_id: !input thermostat
+    attribute: target_temp_high
+    id: setpoint
+  - trigger: state
+    entity_id: !input thermostat
+    to: ~
+    id: mode
+  - trigger: state
+    entity_id: !input manual_override
+    from: "on"
+    to: "off"
+    id: evaluate
+  - trigger: homeassistant
+    event: start
+    id: evaluate
+  - trigger: time_pattern
+    minutes: /5
+    id: evaluate
+
+actions:
+  # Did the thermostat drift from what we asked for? Give a slow confirmation
+  # time to arrive before calling it a change made on the thermostat.
+  - if:
+      - condition: template
+        value_template: >-
+          {{ trigger.id in ['setpoint', 'mode']
+             and trigger.from_state is not none and trigger.to_state is not none
+             and trigger.from_state.state not in ['unavailable', 'unknown']
+             and trigger.to_state.state not in ['unavailable', 'unknown']
+             and is_state(manual_override, 'off') }}
+    then:
+      - wait_template: >-
+          {{ (states(thermostat) == states(commanded_mode) or states(commanded_mode) in ['', 'unknown'])
+             and (state_attr(thermostat, 'target_temp_low') | float(0) - states(heat_below) | float(0)) | abs < 0.3
+             and (state_attr(thermostat, 'target_temp_high') | float(0) - states(cool_above) | float(0)) | abs < 0.3 }}
+        timeout:
+          seconds: "{{ settle_time }}"
+        continue_on_timeout: true
+      - if:
+          - condition: template
+            value_template: "{{ not wait.completed and is_state(manual_override, 'off') }}"
+        then:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: !input manual_override
+          - stop: Changed on the thermostat, manual override is on
+
+  - condition: state
+    entity_id: !input manual_override
+    state: "off"
+
+  - variables:
+      mode_now: "{{ states(thermostat) }}"
+      cur: "{{ state_attr(thermostat, 'current_temperature') }}"
+      low: "{{ states(heat_below) | float(0) }}"
+      high: "{{ states(cool_above) | float(0) }}"
+      heat_ok: "{{ is_state(heat_allowed, 'on') }}"
+      cool_ok: "{{ is_state(cool_allowed, 'on') }}"
+      desired: >-
+        {% if cur is none or low <= 0 or high <= 0 %}{{ mode_now }}
+        {% elif not heat_ok and not cool_ok %}off
+        {% elif cur | float < low and heat_ok %}heat
+        {% elif cur | float > high and cool_ok %}cool
+        {% elif mode_now == 'heat' and heat_ok %}heat
+        {% elif mode_now == 'cool' and cool_ok %}cool
+        {% elif heat_ok %}heat
+        {% else %}cool{% endif %}
+
+  - condition: template
+    value_template: "{{ mode_now in ['off', 'heat', 'cool', 'emergency_heating'] and low > 0 and high > 0 }}"
+
+  # Keep the thermostat's setpoints equal to the range.
+  - if:
+      - condition: template
+        value_template: >-
+          {{ (state_attr(thermostat, 'target_temp_low') | float(0) - low) | abs >= 0.3
+             or (state_attr(thermostat, 'target_temp_high') | float(0) - high) | abs >= 0.3 }}
+    then:
+      - action: climate.set_temperature
+        target:
+          entity_id: !input thermostat
+        data:
+          target_temp_low: "{{ low }}"
+          target_temp_high: "{{ high }}"
+      - wait_template: >-
+          {{ (state_attr(thermostat, 'target_temp_low') | float(0) - low) | abs < 0.3
+             and (state_attr(thermostat, 'target_temp_high') | float(0) - high) | abs < 0.3 }}
+        timeout:
+          seconds: "{{ settle_time }}"
+        continue_on_timeout: true
+
+  # Remember what we want before asking for it, so the confirmation is expected.
+  - if:
+      - condition: template
+        value_template: "{{ states(commanded_mode) != desired }}"
+    then:
+      - action: input_text.set_value
+        target:
+          entity_id: !input commanded_mode
+        data:
+          value: "{{ desired }}"
+
+  - if:
+      - condition: template
+        value_template: "{{ desired != mode_now }}"
+    then:
+      - action: climate.set_hvac_mode
+        target:
+          entity_id: !input thermostat
+        data:
+          hvac_mode: "{{ desired }}"
+      - wait_template: "{{ is_state(thermostat, desired) }}"
+        timeout:
+          seconds: "{{ settle_time }}"
+        continue_on_timeout: true
