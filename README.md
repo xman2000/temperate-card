@@ -11,8 +11,6 @@ Set a range, for example 68° to 75°. Below 68° the thermostat heats. Above 75
   </picture>
 </p>
 
-I bought a Zigbee thermostat so I could control it from Home Assistant, then spent years not finding a card I liked. This is the one I ended up writing. It has been tested with Centralite 3157100 thermostats through Zigbee2MQTT, in °F. Reports from other thermostats are welcome.
-
 ## Features
 
 - One comfort range per thermostat. Heat and cool switch automatically.
