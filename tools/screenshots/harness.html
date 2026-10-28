@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap">
+<style>
+  :root.dark { --page: #111111; --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --divider-color: rgba(225,225,225,.12); --primary-color: #03a9f4; --error-color: #db4437; color-scheme: dark; }
+  :root.light { --page: #fafafa; --card-background-color: #ffffff; --primary-text-color: #212121; --secondary-text-color: #727272; --divider-color: rgba(0,0,0,.12); --primary-color: #03a9f4; --error-color: #db4437; color-scheme: light; }
+  body { margin: 0; background: var(--page); color: var(--primary-text-color); font-family: Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  #wrap { padding: 20px; display: flex; gap: 20px; align-items: flex-start; }
+  #wrap > * { display: block; }
+</style>
+</head>
+<body>
+<div id="wrap"></div>
+<script>
+  // Stand-in for HA's ha-card so the card can render outside Home Assistant.
+  customElements.define('ha-card', class extends HTMLElement {
+    connectedCallback() {
+      Object.assign(this.style, { display: 'block', background: 'var(--card-background-color)', borderRadius: '12px', border: '1px solid var(--divider-color)', color: 'var(--primary-text-color)' });
+    }
+  });
+
+  const q = new URLSearchParams(location.search);
+  document.documentElement.className = q.get('theme') || 'dark';
+
+  const states = {};
+  const put = (id, state, attributes = {}) => { states[id] = { entity_id: id, state: String(state), attributes, last_updated: '2026-10-28T12:00:00Z' }; };
+  // One thermostat plus its helpers. Pass manual: {...} to simulate a change made on the wall.
+  const zone = (prefix, name, { mode, cur, low, high, action, fan = 'auto', heat = true, cool = true, manual = null }) => {
+    const t = manual || { low, high, mode };
+    put(`climate.${prefix}_thermostat`, t.mode, {
+      friendly_name: `${name} Thermostat`, current_temperature: cur, target_temp_low: t.low, target_temp_high: t.high,
+      hvac_action: action, hvac_modes: ['off', 'heat', 'cool'], fan_mode: fan, fan_modes: ['auto', 'on'],
+      min_temp: 45, max_temp: 90, target_temp_step: 1,
+    });
+    put(`input_boolean.${prefix}_heat_allowed`, heat ? 'on' : 'off');
+    put(`input_boolean.${prefix}_cool_allowed`, cool ? 'on' : 'off');
+    put(`input_boolean.${prefix}_manual_override`, manual ? 'on' : 'off');
+    put(`input_number.${prefix}_heat_below`, low);
+    put(`input_number.${prefix}_cool_above`, high);
+  };
+  const ui = (prefix, open, view = 'bar') => localStorage.setItem(`temperate:climate.${prefix}_thermostat`, JSON.stringify({ open, view }));
+
+  const scenes = {
+    // Hero: dial open and cooling, a second zone collapsed.
+    hero() {
+      zone('downstairs', 'Downstairs', { mode: 'cool', cur: 77, low: 68, high: 75, action: 'cooling' });
+      zone('upstairs', 'Upstairs', { mode: 'cool', cur: 73, low: 68, high: 75, action: 'idle' });
+      ui('downstairs', true, 'dial'); ui('upstairs', false);
+      return [{ title: 'Climate', entities: [{ entity: 'climate.downstairs_thermostat', name: 'Downstairs' }, { entity: 'climate.upstairs_thermostat', name: 'Upstairs' }] }];
+    },
+    // Bar layout, heating.
+    bar() {
+      zone('downstairs', 'Downstairs', { mode: 'heat', cur: 66, low: 68, high: 75, action: 'heating' });
+      ui('downstairs', true, 'bar');
+      return [{ entities: [{ entity: 'climate.downstairs_thermostat', name: 'Downstairs' }] }];
+    },
+    // Collapsed rows: one glance at the whole house.
+    rows() {
+      zone('downstairs', 'Downstairs', { mode: 'heat', cur: 66, low: 68, high: 75, action: 'heating' });
+      zone('upstairs', 'Upstairs', { mode: 'cool', cur: 77, low: 68, high: 75, action: 'cooling' });
+      zone('basement', 'Basement', { mode: 'heat', cur: 70, low: 66, high: 76, action: 'idle' });
+      zone('garage', 'Garage', { mode: 'off', cur: 58, low: 50, high: 85, action: 'off', heat: false, cool: false });
+      ['downstairs', 'upstairs', 'basement', 'garage'].forEach((p) => ui(p, false));
+      return [{ title: 'Climate', entities: ['downstairs', 'upstairs', 'basement', 'garage'].map((p) => ({ entity: `climate.${p}_thermostat`, name: p[0].toUpperCase() + p.slice(1) })) }];
+    },
+    // Someone turned the heat up on the wall.
+    manual() {
+      zone('upstairs', 'Upstairs', { mode: 'heat', cur: 70, low: 68, high: 75, action: 'heating', manual: { mode: 'heat', low: 73, high: 78 } });
+      ui('upstairs', true, 'bar');
+      return [{ entities: [{ entity: 'climate.upstairs_thermostat', name: 'Upstairs' }] }];
+    },
+    // Both layouts next to each other.
+    layouts() {
+      zone('downstairs', 'Downstairs', { mode: 'cool', cur: 74, low: 68, high: 75, action: 'idle' });
+      zone('upstairs', 'Upstairs', { mode: 'cool', cur: 74, low: 68, high: 75, action: 'idle' });
+      ui('downstairs', true, 'bar'); ui('upstairs', true, 'dial');
+      return [{ entities: [{ entity: 'climate.downstairs_thermostat', name: 'Bar' }] }, { entities: [{ entity: 'climate.upstairs_thermostat', name: 'Dial' }] }];
+    },
+  };
+
+  localStorage.clear();
+  const configs = scenes[q.get('scene') || 'hero']();
+  const width = q.get('width') || '420';
+  const hass = { states, config: { unit_system: { temperature: '°F' } }, callService: () => Promise.resolve() };
+  const s = document.createElement('script');
+  s.src = '../../temperate-card.js';
+  s.onload = () => {
+    for (const cfg of configs) {
+      const card = document.createElement('temperate-card');
+      card.style.width = `${width}px`;
+      card.setConfig({ type: 'custom:temperate-card', ...cfg });
+      document.getElementById('wrap').appendChild(card);
+      card.hass = hass;
+    }
+    document.fonts.ready.then(() => { document.body.dataset.ready = '1'; });
+  };
+  document.head.appendChild(s);
+</script>
+</body>
+</html>

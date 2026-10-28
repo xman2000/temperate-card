@@ -1,6 +1,6 @@
 // Temperate card: one comfort range per zone, heat/cool as permissions,
 // sticky manual override. Pairs with the "Temperate changeover" blueprint.
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 
 const ARM = '<path d="M12 12V2.5M9.6 4.4L12 6.6l2.4-2.2M10.2 7.6L12 9.2l1.8-1.6"/>';
 const ICON = {
@@ -23,7 +23,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const DIAL = { w: 280, h: 230, cx: 140, cy: 130, r: 100, a0: 135, a1: 405 };
 
 const STYLE = `
-:host { --temperate-heat: #FF8A50; --temperate-cool: #4FA3F7; --temperate-ok: #7CB342; --temperate-off: #6B7078; --temperate-manual: #FFD54F;
+:host { --temperate-heat: #FF8A50; --temperate-cool: #4FA3F7; --temperate-ok: #7CB342; --temperate-off: #6B7078; --temperate-manual: #FFD54F; --temperate-marker: var(--primary-text-color);
   --temperate-surface: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
   --temperate-surface-2: color-mix(in srgb, var(--primary-text-color) 12%, transparent); }
 ha-card { overflow: hidden; }
@@ -54,7 +54,7 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
 .seg.big button { height: 40px; font-size: 14px; }
 .bar { position: relative; height: 30px; margin-top: -6px; }
 .bar div { position: absolute; top: 11px; height: 8px; transition: left .3s, width .3s; }
-.bar .marker { top: 1px; width: 8px; height: 28px; margin-left: -4px; border-radius: 4px; background: #fff; border: 2px solid var(--ha-card-background, var(--card-background-color, #1c1c1e)); box-sizing: border-box; }
+.bar .marker { top: 1px; width: 8px; height: 28px; margin-left: -4px; border-radius: 4px; background: var(--temperate-marker); border: 2px solid var(--ha-card-background, var(--card-background-color, #1c1c1e)); box-sizing: border-box; }
 .round { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--divider-color); background: transparent; font-size: 18px; line-height: 1; }
 .dialwrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: -10px; }
 .dial { position: relative; width: 280px; max-width: 100%; aspect-ratio: 280 / 230; }
@@ -82,12 +82,12 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
 .fan .ft span { display: block; font-size: 13px; color: var(--secondary-text-color); }
 .fan .hint { font-size: 12px; color: var(--secondary-text-color); opacity: .7; }
 .err { padding: 16px; color: var(--error-color); }
-@keyframes atc-spin { to { transform: rotate(360deg); } }
-@keyframes atc-flick { 0%,100% { transform: scale(1,1) rotate(0); } 30% { transform: scale(1.06,.94) rotate(-3deg); } 60% { transform: scale(.96,1.05) rotate(3deg); } }
-.a-heating .icon .ic { animation: atc-flick 1s ease-in-out infinite; transform-origin: 50% 90%; }
-.a-cooling .icon .ic { animation: atc-spin 8s linear infinite; }
-.fan-run .fanic { animation: atc-spin 3s linear infinite; }
-.fan-on .fanic { animation: atc-spin 1.2s linear infinite; }
+@keyframes temperate-spin { to { transform: rotate(360deg); } }
+@keyframes temperate-flick { 0%,100% { transform: scale(1,1) rotate(0); } 30% { transform: scale(1.06,.94) rotate(-3deg); } 60% { transform: scale(.96,1.05) rotate(3deg); } }
+.a-heating .icon .ic { animation: temperate-flick 1s ease-in-out infinite; transform-origin: 50% 90%; }
+.a-cooling .icon .ic { animation: temperate-spin 8s linear infinite; }
+.fan-run .fanic { animation: temperate-spin 3s linear infinite; }
+.fan-on .fanic { animation: temperate-spin 1.2s linear infinite; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 /* Narrow cards (masonry columns, small tablets): tighten, then stack the steppers. */
 @container (max-width: 360px) {
@@ -379,7 +379,7 @@ class TemperateCard extends HTMLElement {
             <path d="${arc(m.low, m.high)}" style="fill:none;stroke:var(--temperate-ok);stroke-width:16"/>
             ${handle('low', lp, 'var(--temperate-heat)', heatLit)}
             ${handle('high', hp, 'var(--temperate-cool)', coolLit)}
-            ${m.act === 'waiting' ? '' : line(11, bg) + line(6, '#fff')}
+            ${m.act === 'waiting' ? '' : line(11, bg) + line(6, 'var(--temperate-marker)')}
           </svg>
           <div class="center">
             <div style="font-size:13px;color:${C}">${label}</div>
