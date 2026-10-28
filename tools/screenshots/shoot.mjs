@@ -30,7 +30,7 @@ ws.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (pendin
 const send = (method, params = {}) => new Promise((r) => { const id = ++seq; pending.set(id, r); ws.send(JSON.stringify({ id, method, params })); });
 const evaluate = async (expr) => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })).result.result.value;
 
-await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1400, deviceScaleFactor: 2, mobile: false });
+await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1400, deviceScaleFactor: 2, mobile: false });
 for (const job of jobs) {
   const [scene, theme, width = '420'] = job.split(':');
   await send('Page.navigate', { url: `${harness}?scene=${scene}&theme=${theme}&width=${width}` });

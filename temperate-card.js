@@ -1,6 +1,6 @@
 // Temperate card: one comfort range per zone, heat/cool as permissions,
 // sticky manual override. Pairs with the "Temperate changeover" blueprint.
-const VERSION = '1.0.1';
+const VERSION = '1.1.0';
 
 const ARM = '<path d="M12 12V2.5M9.6 4.4L12 6.6l2.4-2.2M10.2 7.6L12 9.2l1.8-1.6"/>';
 const ICON = {
@@ -115,11 +115,18 @@ const HELPERS = {
   heat_below: ['input_number', 'heat_below'],
   cool_above: ['input_number', 'cool_above'],
 };
+const zonePrefix = (zone) => zone.entity.split('.')[1].replace(/_thermostat$/, '');
 const helperIds = (zone) => {
-  const prefix = zone.entity.split('.')[1].replace(/_thermostat$/, '');
+  const prefix = zonePrefix(zone);
   const out = {};
   for (const [key, [domain, suffix]] of Object.entries(HELPERS)) out[key] = zone[key] || `${domain}.${prefix}_${suffix}`;
   return out;
+};
+// Everything a zone needs to run, including the helper only the blueprint uses.
+const setupIds = (zone) => ({ ...helperIds(zone), commanded_mode: `input_text.${zonePrefix(zone)}_commanded_mode` });
+const HELPER_ICONS = {
+  heat_allowed: 'mdi:fire', cool_allowed: 'mdi:snowflake', manual_override: 'mdi:hand-back-right',
+  heat_below: 'mdi:thermometer-chevron-down', cool_above: 'mdi:thermometer-chevron-up', commanded_mode: 'mdi:thermostat',
 };
 const zoneList = (config) => (config.entities || (config.entity ? [config.entity] : []))
   .map((z) => (typeof z === 'string' ? { entity: z } : { ...z }));
@@ -577,6 +584,10 @@ class TemperateCardEditor extends HTMLElement {
         .status { font-size: 12px; margin-top: 8px; line-height: 1.5; }
         .status.ok { color: var(--success-color, #43a047); }
         .status.missing { color: var(--warning-color, #ffa600); }
+        .status.error { color: var(--error-color); }
+        .status .create { display: block; margin-top: 8px; height: 36px; padding: 0 14px; border-radius: 8px; border: 0; font: inherit; font-weight: 500; cursor: pointer; background: var(--primary-color); color: var(--text-primary-color, #fff); }
+        .status .create:disabled { opacity: .6; cursor: default; }
+        .status .next { color: var(--secondary-text-color); }
         code { font-size: 11px; }
       </style>
       <ha-form class="card"></ha-form>
@@ -621,6 +632,14 @@ class TemperateCardEditor extends HTMLElement {
       [entities[i], entities[j]] = [entities[j], entities[i]];
       this._update({ ...this._config, entities }, true);
     }));
+    // The status lines are redrawn on every state change, so listen once on the root.
+    if (!this._delegated) {
+      this._delegated = true;
+      this.shadowRoot.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-create]');
+        if (b) this._createHelpers(+b.dataset.create);
+      });
+    }
     this._built = true;
     this._refresh();
   }
@@ -638,17 +657,91 @@ class TemperateCardEditor extends HTMLElement {
       f.data = zone;
       f.schema = zoneSchema(zone);
     });
-    // Tell the user whether each zone's helpers actually exist.
+    // Tell the user whether each zone's helpers exist, and offer to create the missing ones.
     this.shadowRoot.querySelectorAll('[data-status]').forEach((el) => {
-      const zone = entities[+el.dataset.status] || {};
-      if (!zone.entity || !this._hass) { el.textContent = ''; el.className = 'status'; return; }
-      const ids = helperIds(zone);
-      const missing = Object.values(ids).filter((id) => !this._hass.states[id]);
-      el.className = `status ${missing.length ? 'missing' : 'ok'}`;
-      el.innerHTML = missing.length
-        ? `Missing helpers: ${missing.map((id) => `<code>${esc(id)}</code>`).join(', ')}. Create them or pick others under Helpers.`
-        : 'All five helpers found.';
+      const i = +el.dataset.status;
+      const zone = entities[i] || {};
+      let cls = 'status', html = '';
+      if (zone.entity && this._hass && zone.entity.startsWith('climate.')) {
+        const job = (this._jobs || {})[i];
+        const missing = Object.values(setupIds(zone)).filter((id) => !this._hass.states[id]);
+        if (missing.length) {
+          const busy = job && job.busy, error = job && job.error;
+          cls = `status ${error ? 'error' : 'missing'}`;
+          const admin = !this._hass.user || this._hass.user.is_admin;
+          html = (error ? `Couldn't create the helpers: ${esc(error)}. ` : '')
+            + (missing.length === 6
+              ? 'This thermostat has no helpers yet.'
+              : `Missing helpers: ${missing.map((id) => `<code>${esc(id)}</code>`).join(', ')}.`)
+            + (admin
+              ? `<button class="create" data-create="${i}"${busy ? ' disabled' : ''}>${busy ? 'Creating…' : error ? 'Try again' : `Create ${missing.length === 1 ? 'it' : `all ${missing.length}`}`}</button>`
+              : ' Ask an administrator to create them, or pick others under Helpers.');
+        } else {
+          cls = 'status ok';
+          html = 'All six helpers found.'
+            + (job && job.done ? ' <span class="next">Next: create an automation from the Temperate changeover blueprint for this thermostat.</span>' : '');
+        }
+      }
+      if (el.className !== cls) el.className = cls;
+      if (el.innerHTML !== html) el.innerHTML = html;
     });
+  }
+
+  // Creates the zone's missing helpers as UI helpers, then seeds them from the thermostat:
+  // the range from its current setpoints, and Heat/Cool allowed for the modes it supports.
+  async _createHelpers(i) {
+    const hass = this._hass;
+    const zone = this._config.entities[i];
+    if (!hass || !zone || !zone.entity || (this._jobs && this._jobs[i] && this._jobs[i].busy)) return;
+    this._jobs = { ...this._jobs, [i]: { busy: true } };
+    this._refresh();
+    const st = hass.states[zone.entity];
+    const a = (st && st.attributes) || {};
+    const unit = (hass.config.unit_system && hass.config.unit_system.temperature) || '°F';
+    const isF = unit.includes('F');
+    const min = a.min_temp ?? (isF ? 45 : 7), max = a.max_temp ?? (isF ? 90 : 32);
+    const step = a.target_temp_step || (isF ? 1 : 0.5);
+    const clamp = (v) => Math.min(max, Math.max(min, Math.round(v / step) * step));
+    const modes = a.hvac_modes || [];
+    const seed = {
+      heat_allowed: modes.includes('heat'),
+      cool_allowed: modes.includes('cool'),
+      heat_below: clamp(a.target_temp_low ?? (isF ? 68 : 20)),
+      cool_above: clamp(a.target_temp_high ?? (isF ? 75 : 24)),
+    };
+    const renamed = {};
+    try {
+      const created = [];
+      for (const [key, id] of Object.entries(setupIds(zone))) {
+        if (hass.states[id]) continue;
+        const [domain, objectId] = id.split('.');
+        // HA builds the entity id from the name, so name it after the id we want.
+        const words = objectId.replace(/_/g, ' ');
+        const msg = { type: `${domain}/create`, name: words[0].toUpperCase() + words.slice(1), icon: HELPER_ICONS[key] };
+        if (domain === 'input_number') Object.assign(msg, { min, max, step, mode: 'box', unit_of_measurement: unit });
+        const item = await hass.callWS(msg);
+        created.push({ key, id, domain, uid: item.id });
+      }
+      // The entity id can still differ from the one asked for (an old registry entry
+      // may hold it), so look up what HA actually registered.
+      const registry = await hass.callWS({ type: 'config/entity_registry/list' });
+      for (const c of created) {
+        const entry = registry.find((r) => r.platform === c.domain && r.unique_id === c.uid);
+        const made = entry ? entry.entity_id : c.id;
+        if (made !== c.id && c.key !== 'commanded_mode') renamed[c.key] = made;
+        if (c.domain === 'input_number') await hass.callService('input_number', 'set_value', { entity_id: made, value: seed[c.key] });
+        else if (seed[c.key]) await hass.callService('input_boolean', 'turn_on', { entity_id: made });
+      }
+      this._jobs = { ...this._jobs, [i]: { done: true } };
+    } catch (e) {
+      this._jobs = { ...this._jobs, [i]: { error: (e && e.message) || String(e) } };
+    }
+    // If HA picked a different id (one was taken), point the zone at what it made.
+    if (Object.keys(renamed).length) {
+      const entities = this._config.entities.slice();
+      entities[i] = { ...entities[i], ...renamed };
+      this._update({ ...this._config, entities });
+    } else this._refresh();
   }
 
   // Drops empty values so the saved YAML stays tidy, then tells HA.

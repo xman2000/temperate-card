@@ -8,7 +8,7 @@
   :root.light { --page: #fafafa; --card-background-color: #ffffff; --primary-text-color: #212121; --secondary-text-color: #727272; --divider-color: rgba(0,0,0,.12); --primary-color: #03a9f4; --error-color: #db4437; color-scheme: light; }
   body { margin: 0; background: var(--page); color: var(--primary-text-color); font-family: Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
   #wrap { padding: 20px; display: flex; gap: 20px; align-items: flex-start; }
-  #wrap > * { display: block; }
+  #wrap > * { display: block; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -78,6 +78,18 @@
       ui('downstairs', true, 'bar'); ui('upstairs', true, 'dial');
       return [{ entities: [{ entity: 'climate.downstairs_thermostat', name: 'Bar' }] }, { entities: [{ entity: 'climate.upstairs_thermostat', name: 'Dial' }] }];
     },
+    // The same card at a wide column, a narrow column and a small phone.
+    sizes() {
+      for (const p of ['wide', 'narrow', 'phone']) {
+        zone(p, p, { mode: 'cool', cur: 77, low: 68, high: 75, action: 'cooling' });
+        ui(p, true, 'dial');
+      }
+      return [
+        { entities: [{ entity: 'climate.wide_thermostat', name: 'Downstairs' }], width: 440 },
+        { entities: [{ entity: 'climate.narrow_thermostat', name: 'Downstairs' }], width: 330 },
+        { entities: [{ entity: 'climate.phone_thermostat', name: 'Downstairs' }], width: 260 },
+      ];
+    },
   };
 
   localStorage.clear();
@@ -87,9 +99,9 @@
   const s = document.createElement('script');
   s.src = '../../temperate-card.js';
   s.onload = () => {
-    for (const cfg of configs) {
+    for (const { width: w, ...cfg } of configs) {
       const card = document.createElement('temperate-card');
-      card.style.width = `${width}px`;
+      card.style.width = `${w || width}px`;
       card.setConfig({ type: 'custom:temperate-card', ...cfg });
       document.getElementById('wrap').appendChild(card);
       card.hass = hass;
