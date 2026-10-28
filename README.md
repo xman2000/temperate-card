@@ -1,118 +1,123 @@
 # Temperate
 
-Temperate is a thermostat card and automation for Home Assistant. You pick a temperature range, say 68° to 75°. If the room drops below 68°, the heat comes on. If it climbs above 75°, the AC comes on. You never have to switch between heating and cooling yourself.
+A thermostat card and automation blueprint for Home Assistant.
 
-If someone changes the thermostat on the wall, Temperate backs off and keeps their setting until you tell it to take over again.
+Set a range, for example 68° to 75°. Below 68° the thermostat heats. Above 75° it cools. In between it does nothing. Changes made at the thermostat itself are left alone until you switch back to auto.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/images/hero-light.png">
-    <img src="docs/images/hero-dark.png" width="420" alt="Temperate card in the dial layout, cooling downstairs to 75°, with upstairs collapsed and comfortable">
+    <img src="docs/images/hero-dark.png" width="420" alt="Temperate card, dial layout, cooling downstairs to 75°, upstairs collapsed">
   </picture>
 </p>
 
-There are two parts: a dashboard card, and a blueprint for the automation that does the switching. You'll want both.
+I bought a Zigbee thermostat so I could control it from Home Assistant, then spent years not finding a card I liked. This is the one I ended up writing. It has been tested with Centralite 3157100 thermostats through Zigbee2MQTT, in °F. Reports from other thermostats are welcome.
 
-## How it works
+## Features
 
-You set two numbers per thermostat: *heat below* and *cool above*. Drag the handles on the dial or bar, or tap the plus and minus buttons. Between the two numbers, nothing runs.
+- One comfort range per thermostat. Heat and cool switch automatically.
+- Heat and Cool buttons allow or block each mode. Blocking cooling in winter keeps it off.
+- Changes made on the thermostat are detected and kept. The card shows a Manual banner with a Back to auto button.
+- Bar or dial layout, chosen per thermostat. Drag the handles or use the + and − buttons.
+- Each thermostat collapses to a single row showing the room temperature and current state.
+- Works in narrow dashboard columns and on phones.
+- Visual editor, which can also create the helpers each thermostat needs.
 
-The Heat and Cool buttons don't change the thermostat's mode. They decide whether Temperate is allowed to use heat or cooling at all. Turn cooling off for the winter and it stays off, even on a warm afternoon.
+## Screenshots
 
-If someone changes the mode or temperature on the thermostat itself, Temperate assumes they meant it. It stops sending commands to that thermostat and the card shows a yellow **Manual** banner. Press **Back to auto** when you want your range back.
-
-<p align="center">
-  <img src="docs/images/manual-dark.png" width="420" alt="Card in manual mode: someone set heat to 73° on the thermostat, with a Back to auto button that restores 68–75°">
-</p>
-
-Some thermostats, especially Zigbee ones, take several seconds to confirm a command. Temperate waits 20 seconds before deciding a change came from the wall, so a slow thermostat won't flip it into manual by mistake. You can change that wait in the automation.
-
-## The card
-
-### Bar or dial
-
-Every thermostat can use either layout. Each browser remembers which one you picked, so the wall tablet and your phone can differ.
+Manual mode, after someone set the heat to 73° on the thermostat:
 
 <p align="center">
-  <img src="docs/images/layouts-dark.png" width="840" alt="The bar layout and the dial layout side by side">
+  <img src="docs/images/manual-dark.png" width="420" alt="Manual mode banner with a Back to auto button">
 </p>
 
-### Collapsed rows
-
-Tap a thermostat's header to fold it down to one line: the room temperature and what it's doing. The icon is colored and moves: the flame flickers while heating and the snowflake turns while cooling. With several thermostats folded, you can check the whole house at a glance.
+Bar and dial layouts:
 
 <p align="center">
-  <img src="docs/images/rows-dark.png" width="420" alt="Four thermostats collapsed to rows: heating, cooling, comfortable and off">
+  <img src="docs/images/layouts-dark.png" width="840" alt="Bar layout and dial layout side by side">
 </p>
 
-### Any screen size
-
-The card fits whatever space the dashboard gives it, from a wide desktop column to a phone. In narrow columns the buttons get smaller and the dial shrinks to fit. On the narrowest screens the heat and cool controls stack instead of getting cut off.
+Collapsed rows:
 
 <p align="center">
-  <img src="docs/images/sizes-dark.png" width="840" alt="The same card at a wide column, a narrow column and phone width">
+  <img src="docs/images/rows-dark.png" width="420" alt="Four thermostats collapsed: heating, cooling, comfortable, off">
 </p>
 
-### Visual editor
-
-You can set everything without touching YAML: the thermostats, names, layout, an optional room sensor, and which helpers to use. The editor checks that each thermostat's helpers exist. If they don't, one button creates them for you, filled in from the thermostat's current settings.
+The same card in a wide column, a narrow column and at phone width. At the smallest size the heat and cool controls stack:
 
 <p align="center">
-  <img src="docs/images/editor-dark.png" width="420" alt="The card editor with two thermostats. The first has all its helpers; the second shows a Create all 6 button">
+  <img src="docs/images/sizes-dark.png" width="840" alt="The card at three widths">
 </p>
 
-### Also
+The editor. The second thermostat has no helpers yet:
 
-- The fan button switches between the fan modes your thermostat offers, such as Auto and On.
-- After a restart, the card says *Waiting* until the thermostat reports in, so you never see a blank or made-up temperature.
-- The colors follow your theme, and you can change them (see [Theming](#theming)).
+<p align="center">
+  <img src="docs/images/editor-dark.png" width="420" alt="Card editor with a Create all 6 button">
+</p>
+
+## How the automation decides
+
+Every thermostat has a *heat below* and a *cool above* number, stored in Home Assistant helpers. The blueprint copies them to the thermostat's low and high setpoints and sets the mode:
+
+- Room below *heat below* and heat allowed: heat.
+- Room above *cool above* and cooling allowed: cool.
+- Otherwise the mode stays as it is, as long as that mode is still allowed. If it isn't, heat is used if allowed, then cool.
+- Neither mode allowed: off.
+
+It runs whenever the room temperature, the range or the allow buttons change, and every five minutes.
+
+If the thermostat's mode or setpoints stop matching what the automation last sent, and the difference lasts longer than 20 seconds, it counts as a manual change. The automation turns on the manual override and stops sending commands. Turning the override off (Back to auto on the card) puts the range back. The 20-second wait is there because some Zigbee thermostats confirm commands slowly. It can be changed in the automation.
 
 ## Requirements
 
-- Home Assistant 2024.10 or newer.
-- A thermostat (`climate` entity) with heat and cool modes that accepts a low and a high setpoint (`target_temp_low` and `target_temp_high`).
+- Home Assistant 2024.10 or later.
+- A `climate` entity with `heat` and `cool` modes that supports `target_temp_low` and `target_temp_high`.
 
-## Setup
+## Installation
 
-### 1. Install the card
+### Card
 
-Add this repository to HACS (or the Home Assistant Marketplace) as a custom **Dashboard** repository and download **Temperate**.
+HACS or the Home Assistant Marketplace: add this repository as a custom repository of type **Dashboard**, then download **Temperate**.
 
-To install it by hand, copy `temperate-card.js` to `config/www/temperate-card/` and add it as a dashboard resource:
+Manual: copy `temperate-card.js` to `config/www/temperate-card/` and add a dashboard resource:
 
 ```yaml
 url: /local/temperate-card/temperate-card.js
 type: module
 ```
 
-### 2. Add the card and create its helpers
+### Helpers
 
-Add **Temperate** to a dashboard from the card picker and choose your thermostats. Under each thermostat, the editor tells you whether its helpers exist. Press **Create all 6** and it makes them. The range comes from the thermostat's current setpoints, and heat and cool are allowed if the thermostat supports them.
+Add the card to a dashboard and select your thermostats. The editor lists any missing helpers under each thermostat, with a button to create them. New helpers take their range from the thermostat's current setpoints. Creating helpers requires an admin account.
 
-Creating helpers needs an administrator account. If you'd rather make them yourself, see [Helpers](#helpers).
+To create them yourself instead, see [Helpers](#helpers-1).
 
-### 3. Add the automation
+### Blueprint
 
 [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fxman2000%2Ftemperate-card%2Fblob%2Fmain%2Fblueprints%2Ftemperate_changeover.yaml)
 
-Or go to **Settings → Automations & scenes → Blueprints → Import blueprint** and paste `https://github.com/xman2000/temperate-card/blob/main/blueprints/temperate_changeover.yaml`.
+Or import this URL under **Settings → Automations & scenes → Blueprints**:
 
-Then create one automation per thermostat from **Temperate changeover** and pick the thermostat and its six helpers.
+```
+https://github.com/xman2000/temperate-card/blob/main/blueprints/temperate_changeover.yaml
+```
+
+Create one automation per thermostat from **Temperate changeover**.
 
 ## Helpers
 
-Each thermostat uses six helpers. The card finds them by name. It takes the thermostat's entity id, drops `climate.` and a trailing `_thermostat`, and uses what's left as the prefix. For `climate.downstairs_thermostat` the prefix is `downstairs`:
+Six per thermostat. The card looks them up by name, using the thermostat's entity id without `climate.` and without a trailing `_thermostat` as a prefix. For `climate.downstairs_thermostat`:
 
-| Helper | Type | What it's for |
+| Entity | Type | Purpose |
 |---|---|---|
-| `input_boolean.downstairs_heat_allowed` | Toggle | Heat may run |
-| `input_boolean.downstairs_cool_allowed` | Toggle | Cooling may run |
-| `input_boolean.downstairs_manual_override` | Toggle | On while a change made on the thermostat is being kept |
-| `input_number.downstairs_heat_below` | Number | Bottom of the range |
-| `input_number.downstairs_cool_above` | Number | Top of the range |
-| `input_text.downstairs_commanded_mode` | Text | The automation's note of the mode it last set |
+| `input_boolean.downstairs_heat_allowed` | Toggle | Heat allowed |
+| `input_boolean.downstairs_cool_allowed` | Toggle | Cooling allowed |
+| `input_boolean.downstairs_manual_override` | Toggle | Manual override is on |
+| `input_number.downstairs_heat_below` | Number | Low end of the range |
+| `input_number.downstairs_cool_above` | Number | High end of the range |
+| `input_text.downstairs_commanded_mode` | Text | Last mode the automation set |
 
-To make them yourself, use **Settings → Devices & services → Helpers**, or a package like this:
+As a package:
 
 ```yaml
 # config/packages/temperate_downstairs.yaml
@@ -141,17 +146,15 @@ input_text:
     name: Downstairs commanded mode
 ```
 
-For Celsius, use something like 7 to 30 in steps of 0.5. Helpers with other names work too; choose them in the card editor under **Helpers**.
+For °C, use a range of about 7–30 with a step of 0.5. Helpers with other names can be selected in the card editor.
 
-## Card options
-
-Most people never need these, since the editor covers them. In YAML:
+## Configuration
 
 ```yaml
 type: custom:temperate-card
 title: Climate
-layout: dial        # bar (default) or dial
-collapsed: false    # start folded to one row
+layout: dial
+collapsed: false
 entities:
   - entity: climate.downstairs_thermostat
     name: Downstairs
@@ -160,36 +163,34 @@ entities:
     temperature_sensor: sensor.bedroom_temperature
 ```
 
-| Option | Default | What it does |
+| Option | Default | Description |
 |---|---|---|
-| `entity` / `entities` | | One thermostat, or a list. Each entry is an entity id or an object with the options below. |
-| `title` | | Card title. |
-| `layout` | `bar` | Starting layout. After that, each browser remembers its own choice. |
-| `collapsed` | `false` | Start each thermostat folded. |
-| `min_gap` | 2 °F / 1 °C | Smallest allowed gap between the heat and cool numbers. |
-| `dial_min`, `dial_max` | 55–85 °F / 13–29 °C | Ends of the bar and dial, kept within what the thermostat supports. |
+| `entity` / `entities` | | One thermostat or a list. Entries can be entity ids or objects. |
+| `title` | | Card title |
+| `layout` | `bar` | `bar` or `dial`. Each browser remembers the last layout used. |
+| `collapsed` | `false` | Start with thermostats collapsed |
+| `min_gap` | 2 °F / 1 °C | Minimum gap between heat and cool |
+| `dial_min`, `dial_max` | 55–85 °F / 13–29 °C | Scale of the bar and dial |
 
 Per thermostat:
 
-| Option | What it does |
+| Option | Description |
 |---|---|
-| `entity` | The thermostat. |
-| `name` | Display name. Defaults to the thermostat's name. |
-| `temperature_sensor` | Show this sensor's reading instead of the thermostat's. |
-| `heat_allowed`, `cool_allowed`, `manual_override`, `heat_below`, `cool_above` | Use this helper instead of the one found by name. |
+| `entity` | Climate entity |
+| `name` | Display name. Defaults to the entity name. |
+| `temperature_sensor` | Sensor to show in place of the thermostat's own reading |
+| `heat_allowed`, `cool_allowed`, `manual_override`, `heat_below`, `cool_above` | Helper to use in place of the default name |
 
 ## Theming
 
-Set any of these in your theme, or with card-mod:
-
-| Variable | Default | Used for |
-|---|---|---|
-| `--temperate-heat` | `#FF8A50` | Heating, and the heat end of the range |
-| `--temperate-cool` | `#4FA3F7` | Cooling, and the cool end of the range |
-| `--temperate-ok` | `#7CB342` | Comfortable, and the range itself |
-| `--temperate-off` | `#6B7078` | Off and waiting |
-| `--temperate-manual` | `#FFD54F` | The manual banner |
-| `--temperate-marker` | your theme's text color | The room temperature marker |
+| Variable | Default |
+|---|---|
+| `--temperate-heat` | `#FF8A50` |
+| `--temperate-cool` | `#4FA3F7` |
+| `--temperate-ok` | `#7CB342` |
+| `--temperate-off` | `#6B7078` |
+| `--temperate-manual` | `#FFD54F` |
+| `--temperate-marker` | `var(--primary-text-color)` |
 
 ## License
 
