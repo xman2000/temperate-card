@@ -2,7 +2,7 @@
 
 A thermostat card and automation blueprint for Home Assistant.
 
-Set a range, for example 68° to 75°. Below 68° the thermostat heats. Above 75° it cools. In between it does nothing. Changes made at the thermostat itself are left alone until you switch back to auto.
+Set a range, for example 68° to 75°. The automation writes both numbers to the thermostat as its heat and cool setpoints and switches the mode: heat when the room drops below 68°, cool when it rises above 75°. The thermostat regulates the temperature itself, with its own cycling and short-cycle protection. Changes made at the thermostat are left alone until you switch back to auto.
 
 <p align="center">
   <picture>
@@ -53,25 +53,64 @@ The editor. The second thermostat has no helpers yet:
   <img src="docs/images/editor-dark.png" width="420" alt="Card editor with a Create all 6 button">
 </p>
 
-## How the automation decides
+## How the automation works
 
-Every thermostat has a *heat below* and a *cool above* number, stored in Home Assistant helpers. The blueprint copies them to the thermostat's low and high setpoints and sets the mode:
+Every thermostat has a *heat below* and a *cool above* number, stored in Home Assistant helpers. The automation copies them to the thermostat's `target_temp_low` and `target_temp_high` setpoints. It does not switch the heating or cooling on and off itself. The thermostat holds the active setpoint the way it normally would.
+
+The automation only chooses the mode:
 
 - Room below *heat below* and heat allowed: heat.
 - Room above *cool above* and cooling allowed: cool.
 - Otherwise the mode stays as it is, as long as that mode is still allowed. If it isn't, heat is used if allowed, then cool.
 - Neither mode allowed: off.
 
-It runs whenever the room temperature, the range or the allow buttons change, and every five minutes.
+Between the two numbers the mode does not change, so the range also acts as a deadband between heating and cooling. The card keeps the numbers at least `min_gap` apart.
 
-If the thermostat's mode or setpoints stop matching what the automation last sent, and the difference lasts longer than 20 seconds, it counts as a manual change. The automation turns on the manual override and stops sending commands. Turning the override off (Back to auto on the card) puts the range back. The 20-second wait is there because some Zigbee thermostats confirm commands slowly. It can be changed in the automation.
+The automation runs whenever the room temperature, the range or the allow buttons change, and every five minutes.
+
+### Turning the thermostat on and off
+
+The automation turns the thermostat off only when heat and cooling are both disallowed. It turns it back on, in heat or cool, when one of them is allowed again. While the room is inside the range the thermostat stays in heat or cool and idles at its setpoint.
+
+It only acts when the thermostat is in `off`, `heat`, `cool` or `emergency_heating`. In any other mode (`auto`, `heat_cool`, `dry`, `fan_only`) the automation does nothing until the thermostat is put back into one of those.
+
+### Manual override
+
+A manual change is any change to the thermostat's mode or setpoints that the automation did not make. This includes the thermostat's own buttons, an IR or wall remote, the standard Home Assistant thermostat card, and other automations. If the difference lasts longer than the settle time (20 seconds by default), the automation turns on the manual override and stops sending commands.
+
+The override stays on until it is turned off with Back to auto on the card, or by turning off the `manual_override` helper. The automation then writes the range back to the thermostat.
+
+Example: the range is 14° to 24° and someone sets 20° on the remote. The thermostat stays at 20° and the card shows the Manual banner. After Back to auto, the setpoints return to 14° and 24°.
+
+The settle time is there because some thermostats confirm commands slowly. It can be changed in the automation.
+
+### Limiting heating and cooling to certain hours
+
+*Heat allowed* and *cool allowed* are ordinary `input_boolean` helpers, so any automation can switch them. With both off, the thermostat is turned off. For example, with a [schedule helper](https://www.home-assistant.io/integrations/schedule/) named `schedule.downstairs_climate_hours`:
+
+```yaml
+alias: Downstairs climate hours
+triggers:
+  - trigger: state
+    entity_id: schedule.downstairs_climate_hours
+actions:
+  - action: "input_boolean.turn_{{ trigger.to_state.state }}"
+    target:
+      entity_id:
+        - input_boolean.downstairs_heat_allowed
+        - input_boolean.downstairs_cool_allowed
+```
 
 ## Requirements
 
 - Home Assistant 2024.10 or later.
-- A `climate` entity with `heat` and `cool` modes that supports `target_temp_low` and `target_temp_high`.
+- A `climate` entity with `heat` and `cool` modes and separate heat and cool setpoints (`target_temp_low` and `target_temp_high`). Thermostats and air conditioners with a single `temperature` setpoint are not supported yet.
+
+°C and °F are both supported. The card follows the unit system set in Home Assistant and picks matching defaults for the dial scale, step and gap.
 
 ## Installation
+
+The card, helpers and blueprint can all be installed from the Home Assistant UI, without copying files into the config folder.
 
 ### Card
 
