@@ -110,8 +110,9 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
 .dial .center .small { font-size: 13px; color: var(--secondary-text-color); }
 .handle { cursor: grab; }
 .steps { display: flex; flex-wrap: wrap; gap: 8px 12px; width: 100%; justify-content: space-between; }
-.steps > div:last-child { margin-left: auto; }
 .dialwrap .steps { margin-top: -14px; }
+/* Set by _fitSteps when the two don't fit side by side: one full-width row each. */
+.steps.stack > div { width: 100%; justify-content: space-between; }
 .steps > div { display: flex; align-items: center; gap: 6px; }
 .steps .round { border: 0; background: var(--temperate-surface-2); font-size: 20px; }
 .steps .mid { min-width: 64px; text-align: center; }
@@ -148,7 +149,7 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
   .fan .hint { display: none; }
 }
 @container (max-width: 280px) {
-  .steps > div { width: 100%; justify-content: space-between; margin-left: 0; }
+  .steps > div { width: 100%; justify-content: space-between; }
 }
 `;
 
@@ -309,6 +310,10 @@ class TemperateCard extends HTMLElement {
     this.addEventListener('pointermove', (e) => this._onMove(e));
     this.addEventListener('pointerup', () => this._onUp());
     this.addEventListener('pointercancel', () => this._onUp());
+    if (typeof ResizeObserver !== 'undefined') {
+      this._resize = new ResizeObserver(() => this._fitSteps());
+      this._resize.observe(this);
+    }
   }
 
   _signature() {
@@ -612,6 +617,19 @@ class TemperateCard extends HTMLElement {
       return m ? this._zoneHtml(m, i) : `<div class="err">Entity not found: ${esc(z.entity)}</div>`;
     }).join('');
     if (focus) { const el = this._card.querySelector(focus); if (el && el.focus) el.focus({ preventScroll: true }); }
+    this._fitSteps();
+  }
+
+  // Heat and cool steppers share a row when both fit. When the second one wraps,
+  // both get a full row, so they don't end up staggered.
+  _fitSteps() {
+    if (!this._card || !this._card.querySelectorAll) return;
+    this._card.querySelectorAll('.steps').forEach((row) => {
+      if (this._resize && !row._watched) { row._watched = true; this._resize.observe(row); }
+      row.classList.remove('stack');
+      const [a, b] = row.children;
+      if (a && b && b.offsetTop > a.offsetTop) row.classList.add('stack');
+    });
   }
 
   _zoneHtml(m, i) {
