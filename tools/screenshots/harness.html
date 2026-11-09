@@ -111,7 +111,7 @@
   ];
   const week = Object.fromEntries(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((d) => [d, day]));
   const callWS = (m) => Promise.resolve(m.service === 'get_schedule' ? { response: { [m.target.entity_id]: week } } : {});
-  const hass = { states, config: { unit_system: { temperature: '°F' } }, callService: () => Promise.resolve(), callWS };
+  const hass = { themes: { darkMode: (q.get('theme') || 'dark') === 'dark' }, states, config: { unit_system: { temperature: '°F' } }, callService: () => Promise.resolve(), callWS };
   const s = document.createElement('script');
   s.src = '../../temperate-card.js';
   s.onload = () => {

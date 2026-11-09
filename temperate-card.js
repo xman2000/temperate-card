@@ -1,6 +1,6 @@
 // Temperate card: one comfort range per zone, heat/cool as permissions,
 // sticky manual override. Pairs with the "Temperate changeover" blueprint.
-const VERSION = '1.2.0';
+const VERSION = '1.2.5';
 
 const ARM = '<path d="M12 12V2.5M9.6 4.4L12 6.6l2.4-2.2M10.2 7.6L12 9.2l1.8-1.6"/>';
 const ICON = {
@@ -16,6 +16,7 @@ const ICON = {
 
 ICON.waiting = '<svg class="ic" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><circle cx="6" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18" cy="12" r="1.8"/></svg>';
 const COLOR = { heating: 'var(--temperate-heat)', cooling: 'var(--temperate-cool)', idle: 'var(--temperate-ok)', off: 'var(--temperate-off)', waiting: 'var(--temperate-off)' };
+const TEXT = { heating: 'var(--temperate-heat-text)', cooling: 'var(--temperate-cool-text)', idle: 'var(--temperate-ok-text)', off: 'var(--temperate-off-text)', waiting: 'var(--temperate-off-text)' };
 const mix = (c, p) => `color-mix(in srgb, ${c} ${p}%, transparent)`;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -25,7 +26,17 @@ const DIAL = { w: 280, h: 230, cx: 140, cy: 130, r: 100, a0: 135, a1: 405 };
 const STYLE = `
 :host { --temperate-heat: #FF8A50; --temperate-cool: #4FA3F7; --temperate-ok: #7CB342; --temperate-off: #6B7078; --temperate-manual: #FFD54F; --temperate-marker: var(--primary-text-color);
   --temperate-surface: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
-  --temperate-surface-2: color-mix(in srgb, var(--primary-text-color) 12%, transparent); }
+  --temperate-surface-2: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+  /* Text in the theme colours. Light themes darken them so they stay readable on white. */
+  --temperate-heat-text: var(--temperate-heat); --temperate-cool-text: var(--temperate-cool); --temperate-ok-text: var(--temperate-ok);
+  --temperate-off-text: color-mix(in srgb, var(--temperate-off) 50%, var(--primary-text-color));
+  --temperate-muted: color-mix(in srgb, var(--secondary-text-color) 75%, var(--primary-text-color));
+  --temperate-link: color-mix(in srgb, var(--primary-color) 55%, var(--primary-text-color));
+  --temperate-error: color-mix(in srgb, var(--error-color) 75%, var(--primary-text-color));
+  --temperate-border: color-mix(in srgb, var(--primary-text-color) 50%, transparent); }
+ha-card.light { --temperate-heat-text: color-mix(in srgb, var(--temperate-heat) 50%, var(--primary-text-color));
+  --temperate-cool-text: color-mix(in srgb, var(--temperate-cool) 50%, var(--primary-text-color));
+  --temperate-ok-text: color-mix(in srgb, var(--temperate-ok) 50%, var(--primary-text-color)); }
 ha-card { overflow: hidden; }
 .title { padding: 16px 16px 0; font-size: 18px; font-weight: 500; }
 .zone { container-type: inline-size; }
@@ -36,8 +47,9 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
 .head { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; background: none; border: 0; text-align: left; }
 .icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .who { flex: 1; min-width: 0; }
-.name { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 500; }
-.tag { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--temperate-manual); color: #3A2E00; }
+.name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 15px; font-weight: 500; }
+.nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { flex-shrink: 0; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--temperate-manual); color: #3A2E00; }
 .status { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .temp { font-size: 30px; font-weight: 300; }
 .chev { color: var(--secondary-text-color); transition: transform .25s; flex-shrink: 0; }
@@ -49,21 +61,25 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
 .resume { height: 40px; border-radius: 10px; border: 0; background: var(--temperate-manual); color: #3A2E00 !important; font-size: 14px; font-weight: 500; }
 .toprow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .nxt { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-radius: 10px; background: var(--temperate-surface); font-size: 13px; }
-.nxt .then { color: var(--secondary-text-color); font-size: 12px; white-space: nowrap; }
+.nxt .then { color: var(--temperate-muted); font-size: 12px; white-space: nowrap; }
 .nxt.held { background: ${mix('var(--temperate-ok)', 14)}; }
-.nxt button { border: 0; background: none; padding: 0; color: var(--primary-color); font-size: 13px; }
+.nxt button { flex-shrink: 0; border: 0; background: none; padding: 8px 12px; margin: -8px -12px; color: var(--temperate-link); font-size: 13px; }
 .ribbon svg { display: block; width: 100%; touch-action: none; border-radius: 6px; }
-.saxis { display: flex; justify-content: space-between; margin-top: 3px; font-size: 12px; }
+.saxis { position: relative; height: 16px; margin-top: 3px; font-size: 12px; }
+.saxis span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.saxis span:first-child { transform: none; }
+.saxis span:last-child { transform: translateX(-100%); }
 .slist { display: flex; flex-direction: column; }
 .srow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 2px; background: none; border: 0; border-top: 1px solid ${mix('var(--primary-text-color)', 28)}; text-align: left; font-size: 14px; }
 .srow:disabled { cursor: default; }
 .srow .stime { width: 76px; flex-shrink: 0; font-size: 13px; }
 .srow .sname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.srow.now .sname { color: var(--temperate-ok); }
+.srow.now .sname { color: var(--temperate-ok-text); }
 .sedit { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 14px; }
 .sfields { display: flex; gap: 8px; }
 .sfields label { flex: 1; min-width: 0; font-size: 11px; color: var(--secondary-text-color); }
-.sfields input { display: block; width: 100%; box-sizing: border-box; height: 36px; margin-top: 3px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--temperate-surface); color: var(--primary-text-color); font: inherit; font-size: 14px; color-scheme: light dark; }
+.sfields input { display: block; width: 100%; box-sizing: border-box; height: 36px; margin-top: 3px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--temperate-border); background: var(--temperate-surface); color: var(--primary-text-color); font: inherit; font-size: 14px; color-scheme: light dark; }
+.follow { display: flex; align-items: center; gap: 10px; height: 36px; margin-left: auto; padding: 0 4px 0 8px; border: 0; border-radius: 10px; background: none; color: var(--temperate-muted); font-size: 12px; white-space: nowrap; }
 .switchrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 0; background: none; border: 0; text-align: left; font-size: 14px; }
 .switchrow small { display: block; font-size: 12px; color: var(--secondary-text-color); }
 .sw { position: relative; flex-shrink: 0; width: 36px; height: 20px; border-radius: 10px; background: var(--temperate-surface-2); transition: background .2s; }
@@ -71,15 +87,15 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
 .sw.on { background: var(--temperate-ok); }
 .sw.on::after { left: 18px; background: #fff; }
 .sadd { height: 40px; border-radius: 10px; border: 0; background: var(--temperate-surface-2); color: var(--primary-text-color); font-size: 14px; font-weight: 500; }
-.sremove { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--error-color); font-size: 13px; }
+.sremove { align-self: flex-start; padding: 8px 0; margin: -8px 0; border: 0; background: none; color: var(--temperate-error); font-size: 13px; }
 .sempty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
 .sempty b { font-size: 15px; font-weight: 500; color: var(--primary-text-color); }
-.screate { margin-top: 8px; height: 40px; padding: 0 18px; border-radius: 10px; border: 0; background: var(--primary-color); color: var(--text-primary-color, #fff); font-size: 14px; font-weight: 500; }
+.screate { margin-top: 8px; height: 40px; padding: 0 18px; border-radius: 10px; border: 0; background: color-mix(in srgb, var(--primary-color) 70%, #000); color: var(--text-primary-color, #fff); font-size: 14px; font-weight: 500; }
 .screate:disabled { opacity: .6; cursor: default; }
 .snote { font-size: 12px; color: var(--secondary-text-color); }
-.serr { font-size: 12px; color: var(--error-color); }
+.serr { font-size: 12px; color: var(--temperate-error); }
 .seg { display: flex; background: var(--temperate-surface); border-radius: 10px; padding: 3px; }
-.seg button { flex: 1; height: 30px; padding: 0 12px; border-radius: 8px; border: 0; background: transparent; color: var(--secondary-text-color); font-size: 12px; }
+.seg button { flex: 1; height: 30px; padding: 0 12px; border-radius: 8px; border: 0; background: transparent; color: var(--temperate-muted); font-size: 12px; }
 .seg button.on { background: var(--temperate-surface-2); color: var(--primary-text-color); }
 .seg.big button { height: 40px; font-size: 14px; }
 .bar { position: relative; height: 30px; margin-top: -6px; }
@@ -102,15 +118,15 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
 .steps .mid span { display: block; font-size: 11px; color: var(--secondary-text-color); white-space: nowrap; }
 .steps .mid b { font-weight: 400; font-size: 20px; }
 .allow { display: flex; gap: 10px; }
-.allow button { flex: 1; height: 44px; border-radius: 12px; border: 1px solid var(--divider-color); background: transparent; color: var(--secondary-text-color); font-size: 14px; }
-.allow button.on.h { background: ${mix('var(--temperate-heat)', 15)}; color: var(--temperate-heat); border-color: var(--temperate-heat); }
-.allow button.on.c { background: ${mix('var(--temperate-cool)', 15)}; color: var(--temperate-cool); border-color: var(--temperate-cool); }
+.allow button { flex: 1; height: 44px; border-radius: 12px; border: 1px solid var(--temperate-border); background: transparent; color: var(--secondary-text-color); font-size: 14px; }
+.allow button.on.h { background: ${mix('var(--temperate-heat)', 15)}; color: var(--temperate-heat-text); border-color: var(--temperate-heat); }
+.allow button.on.c { background: ${mix('var(--temperate-cool)', 15)}; color: var(--temperate-cool-text); border-color: var(--temperate-cool); }
 .mlabel { font-size: 12px; color: var(--secondary-text-color); margin-bottom: 6px; }
 .fan { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px; border-radius: 14px; border: 0; background: var(--temperate-surface); text-align: left; }
 .fan .fi { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
 .fan .ft { flex: 1; }
-.fan .ft span { display: block; font-size: 13px; color: var(--secondary-text-color); }
-.fan .hint { font-size: 12px; color: var(--secondary-text-color); opacity: .7; }
+.fan .ft span { display: block; font-size: 13px; color: var(--temperate-muted); }
+.fan .hint { font-size: 12px; color: var(--temperate-muted); }
 .err { padding: 16px; color: var(--error-color); }
 @keyframes temperate-spin { to { transform: rotate(360deg); } }
 @keyframes temperate-flick { 0%,100% { transform: scale(1,1) rotate(0); } 30% { transform: scale(1.06,.94) rotate(-3deg); } 60% { transform: scale(.96,1.05) rotate(3deg); } }
@@ -171,15 +187,19 @@ const MAX_PERIODS = 8;
 const SNAP = 15;
 const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+const near = (a, b) => Math.abs(a - b) < 0.01;
+const byStart = (a, b) => a.start - b.start;
 const samePeriod = (a, b) => a.name === b.name && a.off === b.off && a.low === b.low && a.high === b.high;
-const periodData = (p) => ({ period: p.name, ...(p.off ? { off: true } : { heat_below: p.low, cool_above: p.high }) });
+const periodData = (p) => ({ period: p.name, ...(p.off ? { off: true } : p.low == null ? {} : { heat_below: p.low, cool_above: p.high }) });
 
 // A schedule block can't cross midnight, so a period that does is stored as two.
 const blocksToPeriods = (blocks) => {
   const list = blocks.map((b) => {
     const d = b.data || {};
-    return { start: toMin(b.from), name: d.period || '', off: d.off === true, low: d.heat_below, high: d.cool_above };
-  }).sort((a, b) => a.start - b.start);
+    // A block from a schedule made elsewhere has no range. The automation ignores those.
+    const range = Number.isFinite(d.heat_below) && Number.isFinite(d.cool_above);
+    return { start: toMin(b.from), name: d.period || 'Period', off: d.off === true, low: range ? d.heat_below : null, high: range ? d.cool_above : null };
+  }).sort(byStart);
   if (list.length > 1 && list[0].start === 0 && samePeriod(list[0], list[list.length - 1])) list.shift();
   return list;
 };
@@ -242,12 +262,37 @@ class TemperateCard extends HTMLElement {
     if (!this._root) this._build();
     const sig = this._signature();
     // Redrawing would take the cursor out of a schedule field mid-edit.
-    if (sig !== this._sig && !this._typing()) { this._sig = sig; this._render(); }
+    if (sig === this._sig) return;
+    if (this._typing()) this._dirty = true;
+    else { this._sig = sig; this._render(); }
   }
 
   _typing() {
     const a = this._root && this._root.activeElement;
     return !!a && a.tagName === 'INPUT';
+  }
+
+  _schedRender() {
+    if (this._typing()) this._dirty = true;
+    else this._render();
+  }
+
+  // Runs what was held back while a field had focus. Waits for a press to finish,
+  // because redrawing under the pointer would lose the click.
+  _flush() {
+    setTimeout(() => {
+      if (!this._dirty || this._typing() || this._pressed) return;
+      this._dirty = false;
+      for (const z of this._zones) {
+        const s = this._schedState(z);
+        if (!s.periods) continue;
+        const open = s.edit != null ? s.periods[s.edit] : null;
+        s.periods = [...s.periods].sort(byStart);
+        if (open) s.edit = s.periods.indexOf(open);
+      }
+      this._sig = this._signature();
+      this._render();
+    }, 0);
   }
 
   getCardSize() { return 1 + this._zones.length * 2; }
@@ -259,6 +304,7 @@ class TemperateCard extends HTMLElement {
     this._card = this._root.querySelector('ha-card');
     this._root.addEventListener('click', (e) => this._onClick(e));
     this._root.addEventListener('change', (e) => this._onChange(e));
+    this._root.addEventListener('focusout', () => this._flush());
     this._root.addEventListener('pointerdown', (e) => this._onDown(e));
     this.addEventListener('pointermove', (e) => this._onMove(e));
     this.addEventListener('pointerup', () => this._onUp());
@@ -343,7 +389,8 @@ class TemperateCard extends HTMLElement {
     const following = !!entity && (!h.states[z.follow] || h.states[z.follow].state === 'on');
     const at = periods ? periodAt(periods, this._now().min) : {};
     // The period changes the helpers only at its start, so a difference is a hand-set hold.
-    const held = following && !!at.cur && !at.cur.off && !manual && rangeLow != null && (rangeLow !== at.cur.low || rangeHigh !== at.cur.high);
+    const unlinked = ['unlinked', 'none', 'outdated'].includes(s.link);
+    const held = following && !unlinked && !!at.cur && !at.cur.off && at.cur.low != null && !manual && rangeLow != null && rangeHigh != null && !(near(rangeLow, at.cur.low) && near(rangeHigh, at.cur.high));
     return {
       entity, s, periods, following, held, ...at,
       editable: !!entity && entity.attributes.editable !== false && (!h.user || h.user.is_admin),
@@ -352,7 +399,12 @@ class TemperateCard extends HTMLElement {
 
   // Wall-clock time where Home Assistant is, which may not be where this browser is.
   _now() {
-    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: this._hass.config.time_zone, weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const zone = this._hass.config.time_zone;
+    if (this._nowZone !== zone || !this._nowFormat) {
+      this._nowZone = zone;
+      this._nowFormat = new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    }
+    const parts = this._nowFormat.formatToParts(new Date());
     const get = (type) => parts.find((p) => p.type === type).value;
     return { day: get('weekday').toLowerCase(), min: +get('hour') * 60 + +get('minute') };
   }
@@ -369,11 +421,13 @@ class TemperateCard extends HTMLElement {
     const h = this._hass;
     const entity = h.states[z.schedule];
     const s = this._schedState(z);
-    if (!entity) { s.periods = null; s.key = null; return; }
+    if (!entity) { s.periods = null; s.key = null; s.link = null; s.linkChecked = false; return; }
+    if (!s.linkChecked && h.callApi && (!h.user || h.user.is_admin)) { s.linkChecked = true; this._checkLink(z); }
     if (s.key === entity.last_updated || s.saving || this._drag || !h.callWS) return;
     s.key = entity.last_updated;
     try {
       const r = await h.callWS({ type: 'call_service', domain: 'schedule', service: 'get_schedule', target: { entity_id: z.schedule }, return_response: true });
+      if (s.saving) return;
       const week = r.response[z.schedule];
       const blocks = week[this._now().day] || [];
       s.periods = blocksToPeriods(blocks);
@@ -382,16 +436,76 @@ class TemperateCard extends HTMLElement {
     } catch (e) {
       s.error = `Couldn't read the schedule: ${(e && e.message) || e}`;
     }
-    if (!this._typing()) this._render();
+    this._schedRender();
+  }
+
+  // The thermostat's Temperate automation, if it has one.
+  async _findAutomation(z) {
+    const h = this._hass;
+    const related = await h.callWS({ type: 'search/related', item_type: 'entity', item_id: z.entity });
+    for (const id of related.automation || []) {
+      const key = h.states[id] && h.states[id].attributes.id;
+      if (!key) continue;
+      // A YAML automation has no config to read, and can't be a linked one anyway.
+      let config;
+      try { config = await h.callApi('GET', `config/automation/config/${key}`); } catch (e) { continue; }
+      const bp = config.use_blueprint;
+      if (bp && bp.path.endsWith('temperate_changeover.yaml') && bp.input.thermostat === z.entity) return { key, config };
+    }
+    return null;
+  }
+
+  async _checkLink(z) {
+    const s = this._schedState(z);
+    try {
+      const found = await this._findAutomation(z);
+      if (!found) s.link = 'none';
+      else {
+        const { path, input } = found.config.use_blueprint;
+        const blueprints = await this._hass.callWS({ type: 'blueprint/list', domain: 'automation' });
+        const inputs = blueprints[path] && blueprints[path].metadata && blueprints[path].metadata.input;
+        if (inputs && !('schedule' in inputs)) s.link = 'outdated';
+        else s.link = input.schedule === z.schedule ? 'linked' : 'unlinked';
+      }
+    } catch (e) {
+      s.link = null;
+    }
+    this._schedRender();
+  }
+
+  // A follow helper created a moment ago may not be in the states yet.
+  async _linkAutomation(z, withFollow = !!this._hass.states[z.follow]) {
+    const h = this._hass;
+    const s = this._schedState(z);
+    try {
+      const found = await this._findAutomation(z);
+      if (!found) { s.link = 'none'; this._render(); return; }
+      const bp = found.config.use_blueprint;
+      bp.input = { ...bp.input, schedule: z.schedule, ...(withFollow ? { follow_schedule: z.follow } : {}) };
+      await h.callApi('POST', `config/automation/config/${found.key}`, found.config);
+      s.link = 'linked';
+      s.error = null;
+    } catch (e) {
+      s.error = `Couldn't link the automation: ${(e && (e.body && e.body.message || e.message)) || e}`;
+    }
+    this._render();
   }
 
   // Applies an edit straight away and saves it once the changes stop.
-  _schedEdit(z, k, mutate) {
+  _schedEdit(z, k, mutate, fromField = false) {
     const s = this._schedState(z);
     const periods = s.periods.map((p) => ({ ...p }));
     const target = periods[k];
     mutate(target, periods);
-    periods.sort((a, b) => a.start - b.start);
+    if (fromField) {
+      // Left unsorted until the field loses focus, so its index stays right.
+      s.periods = periods;
+      this._queueSave(z);
+      this._dirty = true;
+      this._flush();
+      return;
+    }
+    periods.sort(byStart);
     if (s.edit === k) s.edit = periods.indexOf(target);
     s.periods = periods;
     this._queueSave(z);
@@ -417,7 +531,7 @@ class TemperateCard extends HTMLElement {
         ]);
         s.item = list.find((i) => i.id === reg.unique_id);
       }
-      const blocks = periodsToBlocks(s.periods);
+      const blocks = periodsToBlocks([...s.periods].sort(byStart));
       await h.callWS({ type: 'schedule/update', schedule_id: s.item.id, name: s.item.name, ...(s.item.icon ? { icon: s.item.icon } : {}), ...Object.fromEntries(DAYS.map((d) => [d, blocks])) });
       s.error = null;
       s.varies = false;
@@ -425,7 +539,7 @@ class TemperateCard extends HTMLElement {
       s.error = `Couldn't save the schedule: ${(e && e.message) || e}`;
     }
     s.saving = !!s.timer;
-    this._render();
+    this._schedRender();
   }
 
   async _createSchedule(z, m) {
@@ -436,7 +550,7 @@ class TemperateCard extends HTMLElement {
     s.error = null;
     this._render();
     const isF = m.unit.includes('F');
-    const q = (v) => Math.round(v / m.step) * m.step;
+    const q = (v) => +(Math.round(v / m.step) * m.step).toFixed(2);
     const low = q(m.low ?? (isF ? 68 : 20)), high = q(m.high ?? (isF ? 75 : 24));
     const min = m.a.min_temp ?? -100, max = m.a.max_temp ?? 200;
     const periods = [
@@ -444,19 +558,39 @@ class TemperateCard extends HTMLElement {
       { start: 1320, name: 'Night', off: false, low: Math.max(min, low - (isF ? 4 : 2)), high: Math.min(max, high + (isF ? 3 : 2)) },
     ];
     const label = (id) => { const w = id.split('.')[1].replace(/_/g, ' '); return w[0].toUpperCase() + w.slice(1); };
+    // Home Assistant adds a suffix when the name is already taken, and the card finds helpers by id.
+    const claim = async (platform, id, wanted) => {
+      const entries = await h.callWS({ type: 'config/entity_registry/list' });
+      const entry = entries.find((e) => e.platform === platform && e.unique_id === id);
+      if (entry && entry.entity_id !== wanted) await h.callWS({ type: 'config/entity_registry/update', entity_id: entry.entity_id, new_entity_id: wanted });
+    };
+    const made = [];
     try {
       const blocks = periodsToBlocks(periods);
-      await h.callWS({ type: 'schedule/create', name: label(z.schedule), icon: 'mdi:calendar-clock', ...Object.fromEntries(DAYS.map((d) => [d, blocks])) });
+      const item = await h.callWS({ type: 'schedule/create', name: label(z.schedule), icon: 'mdi:calendar-clock', ...Object.fromEntries(DAYS.map((d) => [d, blocks])) });
+      made.push({ type: 'schedule/delete', schedule_id: item.id });
+      await claim('schedule', item.id, z.schedule);
       if (!h.states[z.follow]) {
-        await h.callWS({ type: 'input_boolean/create', name: label(z.follow), icon: 'mdi:calendar-check' });
+        const follow = await h.callWS({ type: 'input_boolean/create', name: label(z.follow), icon: 'mdi:calendar-check' });
+        made.push({ type: 'input_boolean/delete', input_boolean_id: follow.id });
+        await claim('input_boolean', follow.id, z.follow);
         await h.callService('input_boolean', 'turn_on', { entity_id: z.follow });
       }
-      s.created = true;
+      s.linkChecked = true;
+      await this._checkLink(z);
+      if (s.link === 'unlinked') await this._linkAutomation(z, true);
     } catch (e) {
+      // Take back what was made, so that Create schedule can be tried again.
+      for (const m2 of made) await h.callWS(m2).catch(() => {});
       s.error = `Couldn't create the schedule: ${(e && e.message) || e}`;
     }
     s.creating = false;
     this._render();
+  }
+
+  _rangeText(p, m) {
+    if (p.off) return 'Off';
+    return p.low == null ? 'No range' : `${this._fmt(p.low, m)}–${this._fmt(p.high, m)}°`;
   }
 
   _fmt(v, m) {
@@ -468,10 +602,16 @@ class TemperateCard extends HTMLElement {
     if (!this._card || !this._hass) return;
     this._zones.forEach((z) => this._loadSchedule(z));
     const title = this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : '';
+    this._card.classList.toggle('light', !!(this._hass.themes && this._hass.themes.darkMode === false));
+    // Redrawing replaces every element, so put keyboard focus back on the matching one.
+    const a = this._root.activeElement;
+    const focus = a && a.dataset && Object.keys(a.dataset).length
+      ? Object.entries(a.dataset).map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}="${String(v).replace(/["\\]/g, '\\$&')}"]`).join('') : null;
     this._card.innerHTML = title + this._zones.map((z, i) => {
       const m = this._model(z);
       return m ? this._zoneHtml(m, i) : `<div class="err">Entity not found: ${esc(z.entity)}</div>`;
     }).join('');
+    if (focus) { const el = this._card.querySelector(focus); if (el && el.focus) el.focus({ preventScroll: true }); }
   }
 
   _zoneHtml(m, i) {
@@ -488,15 +628,15 @@ class TemperateCard extends HTMLElement {
     else if (m.act === 'off') sub = m.manual ? 'set on the thermostat' : (!m.heatOk && !m.coolOk ? 'heat and cool blocked' : 'off');
     else sub = m.auto ? `${f(m.low)}–${f(m.high)}${deg}` : `holding ${f(holding)}${deg}`;
     const ovDesc = m.mode === 'off' ? 'set to Off' : m.mode === 'heat' ? `Heat to ${f(m.low)}${deg}` : m.mode === 'cool' ? `Cool to ${f(m.high)}${deg}` : `set to ${esc(m.mode.replace('_', ' '))}`;
-    const period = m.sched.following && m.sched.cur && !m.sched.cur.off && m.sched.cur.low === m.savedLow && m.sched.cur.high === m.savedHigh ? `${esc(m.sched.cur.name)} ` : '';
+    const period = m.sched.following && m.sched.cur && !m.sched.cur.off && m.sched.cur.low != null && near(m.sched.cur.low, m.savedLow) && near(m.sched.cur.high, m.savedHigh) ? `${esc(m.sched.cur.name)} ` : '';
     const restore = m.savedLow && m.savedHigh ? ` · restore ${period}${f(m.savedLow)}–${f(m.savedHigh)}${deg}` : '';
     const open = m.ui.open;
     const head = `
       <button class="head" data-act="toggle" data-z="${i}" aria-expanded="${open}" aria-label="${esc(m.name)}: ${label}, ${f(m.cur)} degrees">
-        <span class="icon" style="background:${mix(C, 20)};color:${C}">${ICON[m.act]}</span>
+        <span class="icon" style="background:${mix(C, 20)};color:${TEXT[m.act]}">${ICON[m.act]}</span>
         <span class="who">
-          <span class="name">${esc(m.name)}${m.manual ? '<span class="tag">Manual</span>' : ''}</span>
-          <span class="status" style="color:${C}">${label} · ${sub}</span>
+          <span class="name"><span class="nm">${esc(m.name)}</span>${m.manual ? '<span class="tag">Manual</span>' : ''}</span>
+          <span class="status" style="color:${TEXT[m.act]}">${label} · ${sub}</span>
         </span>
         <span class="temp">${f(m.cur)}${deg}</span>
         ${ICON.chevron}
@@ -536,11 +676,11 @@ class TemperateCard extends HTMLElement {
         <div class="toprow"><div class="seg" role="group" aria-label="Section">
           <button class="${onSchedule ? '' : 'on'}" data-act="tab" data-tab="control" data-z="${i}">Control</button>
           <button class="${onSchedule ? 'on' : ''}" data-act="tab" data-tab="schedule" data-z="${i}">Schedule</button>
-        </div>${onSchedule ? '' : `<div class="seg" role="group" aria-label="Layout">
+        </div>${onSchedule ? this._followHtml(m, i) : `<div class="seg" role="group" aria-label="Layout">
           <button class="${m.ui.view !== 'dial' ? 'on' : ''}" data-act="view" data-view="bar" data-z="${i}">Bar</button>
           <button class="${m.ui.view === 'dial' ? 'on' : ''}" data-act="view" data-view="dial" data-z="${i}">Dial</button>
         </div>`}</div>
-        ${onSchedule ? this._schedHtml(m, i) : `${m.manual ? '' : this._nextHtml(m, i)}${view}${controls}${fan}${this._followHtml(m, i)}`}
+        ${onSchedule ? this._schedHtml(m, i) : `${m.manual ? '' : this._nextHtml(m, i)}${view}${controls}${fan}`}
       </div></div>`;
   }
 
@@ -551,16 +691,18 @@ class TemperateCard extends HTMLElement {
     if (!following) return '<div class="nxt"><span>Schedule paused</span></div>';
     const f = (v) => this._fmt(v, m);
     const until = this._clock(next.start);
-    if (held) return `<div class="nxt held"><span>Held at ${f(m.savedLow)}–${f(m.savedHigh)}° until ${until}</span><button data-act="sched-resume" data-z="${i}">Resume</button></div>`;
+    // One period all day never changes, so nothing ends the hold but Resume.
+    if (held) return `<div class="nxt held"><span>Held at ${f(m.savedLow)}–${f(m.savedHigh)}°${cur === next ? '' : ` until ${until}`}</span><button data-act="sched-resume" data-z="${i}">Resume</button></div>`;
     if (cur === next) return `<div class="nxt"><span>${esc(cur.name)} all day</span></div>`;
-    const then = next.off ? 'Off' : `${f(next.low)}–${f(next.high)}°`;
+    const then = this._rangeText(next, m);
     return `<div class="nxt"><span>${esc(cur.name)} until ${until}</span><span class="then">then ${esc(next.name)} ${then}</span></div>`;
   }
 
   _followHtml(m, i) {
     if (!m.sched.entity || !this._hass.states[m.z.follow]) return '';
-    return `<button class="switchrow" data-act="sched-follow" data-z="${i}" role="switch" aria-checked="${m.sched.following}">
-        <span>Follow schedule<small>Off keeps the range you set</small></span><span class="sw${m.sched.following ? ' on' : ''}"></span>
+    // Sits in the tab row, where the Bar/Dial switch is on the Control tab.
+    return `<button class="follow" data-act="sched-follow" data-z="${i}" role="switch" aria-checked="${m.sched.following}" title="Off keeps the range you set">
+        <span>Follow schedule</span><span class="sw${m.sched.following ? ' on' : ''}"></span>
       </button>`;
   }
 
@@ -572,18 +714,29 @@ class TemperateCard extends HTMLElement {
       return `<div class="sempty"><b>Set a schedule</b><span>Give each part of the day its own range, or turn the thermostat off.</span>
         ${admin ? `<button class="screate" data-act="sched-create" data-z="${i}"${s.creating ? ' disabled' : ''}>${s.creating ? 'Creating…' : 'Create schedule'}</button>` : '<span>Ask an administrator to create one.</span>'}</div>${error}`;
     }
+    if (!periods && s.periods) {
+      const week = s.varies ? ' Saving applies to the whole week.' : '';
+      return `<div class="sempty"><span>Nothing is scheduled for today.${week}</span>${editable ? `<button class="screate" data-act="sched-first" data-z="${i}">Add period</button>` : ''}</div>${error}`;
+    }
     if (!periods) return `${error || '<div class="sempty"><span>Loading schedule…</span></div>'}`;
     const f = (v) => this._fmt(v, m);
     const rows = periods.map((p, k) => `
       <button class="srow${p === cur ? ' now' : ''}" data-act="sched-open" data-k="${k}" data-z="${i}"${editable ? '' : ' disabled'} aria-expanded="${s.edit === k}">
-        <span class="stime">${this._clock(p.start)}</span><span class="sname">${esc(p.name)}</span><span class="srange">${p.off ? 'Off' : `${f(p.low)}–${f(p.high)}°`}</span>
+        <span class="stime">${this._clock(p.start)}</span><span class="sname">${esc(p.name)}</span><span class="srange">${this._rangeText(p, m)}</span>
       </button>${s.edit === k && editable ? this._periodHtml(m, i, p, k) : ''}`).join('');
     const others = editable ? this._zones.map((z, j) => (j !== i && this._hass.states[z.schedule] ? `<button class="sadd" data-act="sched-copy" data-to="${j}" data-z="${i}">Copy to ${esc(z.name || this._hass.states[z.entity]?.attributes.friendly_name || z.entity)}</button>` : '')).join('') : '';
     return `${this._nextHtml(m, i)}${this._ribbonHtml(m, i)}
-      ${s.created ? '<div class="snote">Next: choose this schedule in the thermostat\'s Temperate automation.</div>' : ''}
+      ${this._linkHtml(s, i)}
       ${s.varies ? '<div class="snote">Showing today. Saving applies this day to the whole week.</div>' : ''}${error}
       <div class="slist">${rows}</div>
       ${editable && periods.length < MAX_PERIODS ? `<button class="sadd" data-act="sched-add" data-z="${i}">Add period</button>` : ''}${others}`;
+  }
+
+  _linkHtml(s, i) {
+    if (s.link === 'unlinked') return `<div class="nxt"><span>The automation isn't following this schedule</span><button data-act="sched-link" data-z="${i}">Link</button></div>`;
+    if (s.link === 'none') return '<div class="snote">This thermostat has no Temperate automation, so the schedule won\'t run. Create one from the Temperate changeover blueprint.</div>';
+    if (s.link === 'outdated') return '<div class="snote">Re-import the Temperate changeover blueprint to use the schedule.</div>';
+    return '';
   }
 
   _ribbonHtml(m, i) {
@@ -596,7 +749,8 @@ class TemperateCard extends HTMLElement {
     const rect = (x0, w, top, h, fill, op) => `<rect x="${x0.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" style="fill:${fill};fill-opacity:${op}"/>`;
     const bands = segs.map(({ p, a, b }) => {
       const x0 = x(a) + 0.5, w = Math.max(0, x(b) - x(a) - 1);
-      if (p.off) return rect(x0, w, 0, H, 'var(--temperate-off)', 0.3) + (w > 34 ? `<text x="${(x0 + w / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" style="font-size:12px;fill:var(--secondary-text-color)">Off</text>` : '');
+      if (p.off) return rect(x0, w, 0, H, `url(#temperate-off-${i})`, 1) + (w > 34 ? `<text x="${(x0 + w / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" style="font-size:12px;fill:var(--primary-text-color)">Off</text>` : '');
+      if (p.low == null) return rect(x0, w, 0, H, 'var(--temperate-off)', 0.3);
       const lo = y(p.low), hi = y(p.high);
       // Same colors as the bar, including gray for a blocked mode.
       return rect(x0, w, 0, hi, m.coolOk ? 'var(--temperate-cool)' : 'var(--temperate-surface-2)', 1)
@@ -609,9 +763,10 @@ class TemperateCard extends HTMLElement {
         <circle cx="${x(p.start).toFixed(1)}" cy="${H / 2}" r="5.5" style="fill:var(--ha-card-background, var(--card-background-color, #1c1c1e));stroke:var(--primary-text-color);stroke-width:1.5"/>
       </g>`).join('') : '';
     const now = x(this._now().min);
-    const labels = [0, 360, 720, 1080, 1440].map((t) => `<span>${this._clock(t % 1440, {})}</span>`).join('');
+    const labels = [0, 360, 720, 1080, 1440].map((t) => `<span style="left:${t / 14.4}%">${this._clock(t % 1440, {})}</span>`).join('');
     return `<div class="ribbon" data-ribbon="${i}">
-        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Comfort range across the day">${bands}
+        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Comfort range across the day">
+          <defs><pattern id="temperate-off-${i}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" style="fill:var(--temperate-off);fill-opacity:0.22"/><rect width="2" height="6" style="fill:var(--temperate-off);fill-opacity:0.45"/></pattern></defs>${bands}
           <rect x="${(now - 1.5).toFixed(1)}" y="0" width="3" height="${H}" rx="1.5" style="fill:var(--temperate-marker);pointer-events:none"/>${handles}</svg>
         <div class="saxis">${labels}</div>
       </div>`;
@@ -630,7 +785,7 @@ class TemperateCard extends HTMLElement {
           <label>Starts<input type="time" step="900" value="${hhmm(p.start)}" data-sfield="start" data-k="${k}" data-z="${i}"></label>
           <label>Name<input type="text" maxlength="20" value="${esc(p.name)}" data-sfield="name" data-k="${k}" data-z="${i}"></label>
         </div>
-        ${p.off ? '' : `<div class="steps">${step('low', 'var(--temperate-heat)', 'Heat below', p.low)}${step('high', 'var(--temperate-cool)', 'Cool above', p.high)}</div>`}
+        ${p.off ? '' : `<div class="steps">${step('low', 'var(--temperate-heat-text)', 'Heat below', p.low)}${step('high', 'var(--temperate-cool-text)', 'Cool above', p.high)}</div>`}
         <button class="switchrow" data-act="sched-off" data-k="${k}" data-z="${i}" role="switch" aria-checked="${p.off}">
           <span>Turn the thermostat off<small>No heating or cooling in this period</small></span><span class="sw${p.off ? ' on' : ''}"></span>
         </button>
@@ -644,9 +799,9 @@ class TemperateCard extends HTMLElement {
     return `
       <div class="bar" aria-hidden="true">
         <div style="left:0;right:0;border-radius:4px;background:var(--temperate-surface-2)"></div>
-        <div style="left:0;width:${pct(m.low)}%;border-radius:4px 0 0 4px;background:${heatLit ? 'var(--temperate-heat)' : 'var(--temperate-surface-2)'}"></div>
+        <div style="left:0;width:${pct(m.low)}%;border-radius:4px 0 0 4px;background:${heatLit ? 'var(--temperate-heat)' : 'transparent'}"></div>
         <div style="left:${pct(m.low)}%;width:${pct(m.high) - pct(m.low)}%;background:var(--temperate-ok)"></div>
-        <div style="left:${pct(m.high)}%;right:0;border-radius:0 4px 4px 0;background:${coolLit ? 'var(--temperate-cool)' : 'var(--temperate-surface-2)'}"></div>
+        <div style="left:${pct(m.high)}%;right:0;border-radius:0 4px 4px 0;background:${coolLit ? 'var(--temperate-cool)' : 'transparent'}"></div>
         ${m.act === 'waiting' ? '' : `<div class="marker" style="left:${pct(m.cur)}%"></div>`}
       </div>
       ${this._stepsHtml(m, i, heatLit, coolLit)}`;
@@ -655,16 +810,17 @@ class TemperateCard extends HTMLElement {
   // The heat and cool steppers, shared by the bar and dial layouts.
   _stepsHtml(m, i, heatLit, coolLit) {
     const f = (v) => this._fmt(v, m);
-    const steps = (which, col, lbl, val, lit) => `
-      <div style="opacity:${lit ? 1 : 0.4}">
+    // A blocked mode shows grey, the same as the bar. The range can still be changed.
+    const steps = (which, on, lbl, val, lit) => { const col = lit ? on : 'var(--temperate-muted)'; return `
+      <div>
         <button class="round" style="color:${col}" data-act="step" data-which="${which}" data-d="-1" data-z="${i}" aria-label="Lower ${lbl.toLowerCase()}">−</button>
         <span class="mid"><span>${lbl}</span><b style="color:${col}">${f(val)}°</b></span>
         <button class="round" style="color:${col}" data-act="step" data-which="${which}" data-d="1" data-z="${i}" aria-label="Raise ${lbl.toLowerCase()}">+</button>
-      </div>`;
+      </div>`; };
     return `
       <div class="steps">
-        ${steps('low', 'var(--temperate-heat)', m.auto ? 'Heat below' : 'Heat to', m.low, heatLit)}
-        ${steps('high', 'var(--temperate-cool)', m.auto ? 'Cool above' : 'Cool to', m.high, coolLit)}
+        ${steps('low', 'var(--temperate-heat-text)', m.auto ? 'Heat below' : 'Heat to', m.low, heatLit)}
+        ${steps('high', 'var(--temperate-cool-text)', m.auto ? 'Cool above' : 'Cool to', m.high, coolLit)}
       </div>`;
   }
 
@@ -682,9 +838,9 @@ class TemperateCard extends HTMLElement {
     const bg = 'var(--ha-card-background, var(--card-background-color, #1c1c1e))';
     const line = (w, col) => `<line x1="${c1[0].toFixed(1)}" y1="${c1[1].toFixed(1)}" x2="${c2[0].toFixed(1)}" y2="${c2[1].toFixed(1)}" style="stroke:${col};stroke-width:${w};stroke-linecap:round;pointer-events:none"/>`;
     const handle = (which, p, col, lit) => `
-      <g class="handle" data-handle="${which}" data-z="${i}" style="opacity:${lit ? 1 : 0.4}">
+      <g class="handle" data-handle="${which}" data-z="${i}">
         <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="24" style="fill:#000;fill-opacity:0.001"/>
-        <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="13" style="fill:${bg};stroke:${col};stroke-width:4"/>
+        <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="13" style="fill:${bg};stroke:${lit ? col : 'var(--temperate-muted)'};stroke-width:4"/>
       </g>`;
     const ovDesc = m.mode === 'heat' ? `Heat to ${f(m.low)}°` : m.mode === 'cool' ? `Cool to ${f(m.high)}°` : m.mode === 'off' ? 'Off' : esc(m.mode.replace('_', ' '));
     return `
@@ -692,15 +848,15 @@ class TemperateCard extends HTMLElement {
         <div class="dial" data-dial="${i}">
           <svg viewBox="0 0 ${DIAL.w} ${DIAL.h}" role="img" aria-label="Comfort range dial. Drag the orange or blue handle to change it.">
             <path d="${arc(m.dmin, m.dmax)}" style="fill:none;stroke:var(--temperate-surface-2);stroke-width:16;stroke-linecap:round"/>
-            <path d="${arc(m.dmin, m.low)}" style="fill:none;stroke:${heatLit ? 'var(--temperate-heat)' : 'var(--temperate-surface-2)'};stroke-width:16;stroke-linecap:round"/>
-            <path d="${arc(m.high, m.dmax)}" style="fill:none;stroke:${coolLit ? 'var(--temperate-cool)' : 'var(--temperate-surface-2)'};stroke-width:16;stroke-linecap:round"/>
+            <path d="${arc(m.dmin, m.low)}" style="fill:none;stroke:${heatLit ? 'var(--temperate-heat)' : 'transparent'};stroke-width:16;stroke-linecap:round"/>
+            <path d="${arc(m.high, m.dmax)}" style="fill:none;stroke:${coolLit ? 'var(--temperate-cool)' : 'transparent'};stroke-width:16;stroke-linecap:round"/>
             <path d="${arc(m.low, m.high)}" style="fill:none;stroke:var(--temperate-ok);stroke-width:16"/>
             ${handle('low', lp, 'var(--temperate-heat)', heatLit)}
             ${handle('high', hp, 'var(--temperate-cool)', coolLit)}
             ${m.act === 'waiting' ? '' : line(11, bg) + line(6, 'var(--temperate-marker)')}
           </svg>
           <div class="center">
-            <div style="font-size:13px;color:${C}">${label}</div>
+            <div style="font-size:13px;color:${TEXT[m.act]}">${label}</div>
             <div class="big">${f(m.cur)}°</div>
             <div class="small">${m.auto ? `${f(m.low)}° – ${f(m.high)}°` : ovDesc}</div>
           </div>
@@ -756,6 +912,7 @@ class TemperateCard extends HTMLElement {
       case 'view': this._setUi(z.entity, { view: el.dataset.view }); break;
       case 'tab': this._setUi(z.entity, { tab: el.dataset.tab }); break;
       case 'sched-create': this._createSchedule(z, m); break;
+      case 'sched-link': this._linkAutomation(z); break;
       case 'sched-follow': h.callService('input_boolean', 'toggle', { entity_id: z.follow }); break;
       case 'sched-resume':
         h.callService('input_number', 'set_value', { entity_id: z.heat_below, value: m.sched.cur.low });
@@ -769,9 +926,11 @@ class TemperateCard extends HTMLElement {
       }
       case 'sched-step': {
         const d = +el.dataset.d * m.step, min = m.a.min_temp ?? -100, max = m.a.max_temp ?? 200;
+        const q = (v) => +(Math.round(v / m.step) * m.step).toFixed(2);
         this._schedEdit(z, +el.dataset.k, (p) => {
-          if (el.dataset.which === 'low') p.low = Math.min(p.high - m.gap, Math.max(min, p.low + d));
-          else p.high = Math.max(p.low + m.gap, Math.min(max, p.high + d));
+          if (p.low == null) { p.low = q(m.low); p.high = q(m.high); }
+          if (el.dataset.which === 'low') p.low = q(Math.min(p.high - m.gap, Math.max(min, p.low + d)));
+          else p.high = q(Math.max(p.low + m.gap, Math.min(max, p.high + d)));
         });
         break;
       }
@@ -788,6 +947,14 @@ class TemperateCard extends HTMLElement {
         break;
       }
       case 'sched-add': this._addPeriod(z, m); break;
+      case 'sched-first': {
+        const s = this._schedState(z);
+        s.periods = [{ start: 390, name: 'Day', off: false, low: m.low ?? null, high: m.high ?? null }];
+        s.edit = 0;
+        this._queueSave(z);
+        this._render();
+        break;
+      }
       case 'sched-copy': {
         const to = this._zones[+el.dataset.to], s = this._schedState(to);
         s.periods = m.sched.periods.map((p) => ({ ...p }));
@@ -837,15 +1004,18 @@ class TemperateCard extends HTMLElement {
     const s = this._schedState(z);
     if (field === 'name') {
       const name = e.target.value.trim();
-      if (name) this._schedEdit(z, k, (p) => { p.name = name; }); else this._render();
+      if (name) this._schedEdit(z, k, (p) => { p.name = name; }, true);
+      else { this._dirty = true; this._flush(); }
     } else {
       const start = e.target.value ? toMin(e.target.value) : -1;
-      if (start < 0 || s.periods.some((p, j) => j !== k && p.start === start)) this._render();
-      else this._schedEdit(z, k, (p) => { p.start = start; });
+      if (start < 0 || s.periods.some((p, j) => j !== k && p.start === start)) { this._dirty = true; this._flush(); }
+      else this._schedEdit(z, k, (p) => { p.start = start; }, true);
     }
   }
 
   _onDown(e) {
+    this._pressed = true;
+    window.addEventListener('pointerup', () => { this._pressed = false; this._flush(); }, { once: true, capture: true });
     const sh = e.target.closest('[data-shandle]');
     if (sh) {
       e.preventDefault();
@@ -886,6 +1056,7 @@ class TemperateCard extends HTMLElement {
     const b = ribbon.getBoundingClientRect();
     const lo = k > 0 ? s.periods[k - 1].start + SNAP : 0;
     const hi = k + 1 < s.periods.length ? s.periods[k + 1].start - SNAP : 1440 - SNAP;
+    if (hi < lo) return;
     const start = Math.max(lo, Math.min(hi, Math.round((e.clientX - b.left) / b.width * 1440 / SNAP) * SNAP));
     if (start === s.periods[k].start) return;
     s.periods = s.periods.map((p, j) => (j === k ? { ...p, start } : p));

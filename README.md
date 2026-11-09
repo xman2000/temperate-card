@@ -36,7 +36,7 @@ Bar and dial layouts:
   <img src="docs/images/layouts-dark.png" width="840" alt="Bar layout and dial layout side by side">
 </p>
 
-The Schedule tab. Green is the comfort range, and gray is a period with the thermostat off:
+The Schedule tab. Green is the comfort range, hatched gray is a period with the thermostat off, and the white line is the current time:
 
 <p align="center">
   <img src="docs/images/schedule-dark.png" width="420" alt="Schedule tab showing the comfort range across 24 hours and a list of periods">
@@ -95,20 +95,22 @@ The settle time is there because some thermostats confirm commands slowly. It ca
 
 The Schedule tab divides the day into periods. Each period has a start time and either a range or Off, and runs until the next period starts. The same day repeats all week. Drag a handle on the ribbon to move a start time, or select a period to edit it.
 
-To set one up:
+The **Follow schedule** switch next to the tabs pauses the schedule. The Control tab shows the current period and the next one, a hold, or *Schedule paused*.
 
-1. Open the Schedule tab and select **Create schedule**. This creates `schedule.<name>_schedule` and `input_boolean.<name>_follow_schedule`. An admin account is required.
-2. Edit the automation for that thermostat and choose those two helpers under **Schedule** and **Follow schedule**.
+To set one up, open the Schedule tab and select **Create schedule**. This creates `schedule.<name>_schedule` and `input_boolean.<name>_follow_schedule`, and links them to the thermostat's Temperate automation. An admin account is required. If the thermostat has no Temperate automation yet, the tab says so. A schedule that already exists and isn't linked gets a **Link** button.
 
-The periods are stored in the schedule helper, so the schedule runs without the dashboard open. Until the automation is linked to the schedule, the card shows the range as held and periods do not change it.
+The periods are stored in the schedule helper, so the schedule runs without the dashboard open.
+
+A schedule helper made elsewhere, for example in **Settings → Devices & services → Helpers**, can be selected in the card editor. Blocks without a Temperate range show as *No range*, and the automation leaves the range alone during them. A day with no blocks shows an **Add period** button. Saving from the card applies the day shown to the whole week.
 
 | Situation | Behavior |
 |---|---|
 | A period starts | Its range is written to *heat below* and *cool above*. |
 | An Off period is active | The thermostat is off. Heat allowed and Cool allowed are not changed. |
-| The range is changed during a period | The new range holds until the next period. Resume on the card ends it early. |
+| The range is changed during a period | The new range holds until the next period. Resume on the card ends it early. With a single all-day period, it holds until Resume. |
 | Manual override is on | The override stays on. Back to auto restores the current period. |
-| Follow schedule is off | The range stays as set, and the schedule is ignored. |
+| Follow schedule is off | The range stays as set, and the schedule is ignored. Turning it back on applies the current period. |
+| Home Assistant restarts | A range changed by hand is kept. If a period started while Home Assistant was down, that period is applied. |
 
 ### Limiting heating and cooling to certain hours
 
@@ -265,6 +267,8 @@ Per thermostat:
 | `--temperate-off` | `#6B7078` |
 | `--temperate-manual` | `#FFD54F` |
 | `--temperate-marker` | `var(--primary-text-color)` |
+
+In light themes, text in the heat, cool and comfortable colors is darkened so it stays readable on white. The bar, dial and schedule use the colors as set.
 
 ## License
 

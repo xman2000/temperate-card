@@ -133,6 +133,15 @@ triggers:
   - trigger: state
     entity_id: !input schedule
     id: period
+  - trigger: state
+    entity_id: !input follow_schedule
+    from:
+      - "on"
+      - "off"
+    to:
+      - "on"
+      - "off"
+    id: follow
   - trigger: homeassistant
     event: start
     id: startup
@@ -171,15 +180,23 @@ actions:
 
   # A new period sets the range, even during a manual override, so Back to auto
   # restores the current period. A range changed by hand holds until the next one.
+  - variables:
+      schedule_ready: >-
+        {{ schedule_entity | length > 0
+           and is_state(schedule_entity, 'on')
+           and (follow_entity | length == 0 or is_state(follow_entity, 'on'))
+           and state_attr(schedule_entity, 'heat_below') is number
+           and state_attr(schedule_entity, 'cool_above') is number }}
+      # A period that runs past midnight is two blocks with the same data.
+      period_started: >-
+        {{ trigger.id == 'follow' or (trigger.id == 'period' and (trigger.from_state is none or trigger.to_state is none
+           or trigger.from_state.state != trigger.to_state.state
+           or trigger.from_state.attributes.get('period') != trigger.to_state.attributes.get('period')
+           or trigger.from_state.attributes.get('heat_below') != trigger.to_state.attributes.get('heat_below')
+           or trigger.from_state.attributes.get('cool_above') != trigger.to_state.attributes.get('cool_above'))) }}
   - if:
       - condition: template
-        value_template: >-
-          {{ trigger.id in ['period', 'startup']
-             and schedule_entity | length > 0
-             and is_state(schedule_entity, 'on')
-             and (follow_entity | length == 0 or is_state(follow_entity, 'on'))
-             and state_attr(schedule_entity, 'heat_below') is number
-             and state_attr(schedule_entity, 'cool_above') is number }}
+        value_template: "{{ schedule_ready and period_started }}"
     then:
       - action: input_number.set_value
         continue_on_error: true
@@ -193,6 +210,43 @@ actions:
           entity_id: !input cool_above
         data:
           value: "{{ state_attr(schedule_entity, 'cool_above') }}"
+
+  # After a restart, apply the current period only if one started while Home
+  # Assistant was down, so a restart doesn't end a range changed by hand.
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'startup' and schedule_ready }}"
+    then:
+      - action: schedule.get_schedule
+        continue_on_error: true
+        target:
+          entity_id: "{{ schedule_entity }}"
+        response_variable: week
+      - if:
+          - condition: template
+            value_template: >-
+              {% set last = this.attributes.last_triggered if this is defined else none %}
+              {% set blocks = week[schedule_entity][now().strftime('%A') | lower] if week is defined and schedule_entity in week else none %}
+              {% if last is none or blocks is none %}true{% else %}
+              {% set since = as_local(as_datetime(last | string)) %}
+              {% set a = since.strftime('%H:%M:%S') %}{% set b = now().strftime('%H:%M:%S') %}
+              {% set found = namespace(started = since.date() != now().date()) %}
+              {% for block in blocks %}{% set s = block['from'] | string %}{% if a < s and s <= b %}{% set found.started = true %}{% endif %}{% endfor %}
+              {{ found.started }}
+              {% endif %}
+        then:
+          - action: input_number.set_value
+            continue_on_error: true
+            target:
+              entity_id: !input heat_below
+            data:
+              value: "{{ state_attr(schedule_entity, 'heat_below') }}"
+          - action: input_number.set_value
+            continue_on_error: true
+            target:
+              entity_id: !input cool_above
+            data:
+              value: "{{ state_attr(schedule_entity, 'cool_above') }}"
 
   - condition: state
     entity_id: !input manual_override
