@@ -65,6 +65,24 @@ blueprint:
           min: 5
           max: 120
           unit_of_measurement: seconds
+    schedule:
+      name: Schedule (optional)
+      description: >-
+        A schedule helper edited on the card's Schedule tab. Each period writes
+        its range to Heat below and Cool above, or turns the thermostat off.
+      default: []
+      selector:
+        entity:
+          filter:
+            - domain: schedule
+    follow_schedule:
+      name: Follow schedule (optional)
+      description: A toggle that pauses the schedule when off. Leave empty to always follow it.
+      default: []
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
 
 mode: queued
 max: 25
@@ -78,12 +96,16 @@ variables:
   cool_above: !input cool_above
   commanded_mode: !input commanded_mode
   settle_time: !input settle_time
+  schedule_entity: !input schedule
+  follow_entity: !input follow_schedule
+  # Wide enough for a thermostat that rounds to 0.5 °C while Home Assistant is in °F.
+  tolerance: 0.5
 
 triggers:
   - trigger: state
     entity_id: !input thermostat
     attribute: current_temperature
-    id: evaluate
+    id: temperature
   - trigger: state
     entity_id:
       - !input heat_allowed
@@ -107,10 +129,13 @@ triggers:
     entity_id: !input manual_override
     from: "on"
     to: "off"
-    id: evaluate
+    id: resume
+  - trigger: state
+    entity_id: !input schedule
+    id: period
   - trigger: homeassistant
     event: start
-    id: evaluate
+    id: startup
   - trigger: time_pattern
     minutes: /5
     id: evaluate
@@ -128,9 +153,10 @@ actions:
              and is_state(manual_override, 'off') }}
     then:
       - wait_template: >-
+          {% set l = state_attr(thermostat, 'target_temp_low') %}{% set h = state_attr(thermostat, 'target_temp_high') %}
           {{ (states(thermostat) == states(commanded_mode) or states(commanded_mode) in ['', 'unknown'])
-             and (state_attr(thermostat, 'target_temp_low') | float(0) - states(heat_below) | float(0)) | abs < 0.3
-             and (state_attr(thermostat, 'target_temp_high') | float(0) - states(cool_above) | float(0)) | abs < 0.3 }}
+             and (l is none or (l | float(0) - states(heat_below) | float(0)) | abs < tolerance)
+             and (h is none or (h | float(0) - states(cool_above) | float(0)) | abs < tolerance) }}
         timeout:
           seconds: "{{ settle_time }}"
         continue_on_timeout: true
@@ -143,9 +169,45 @@ actions:
               entity_id: !input manual_override
           - stop: Changed on the thermostat, manual override is on
 
+  # A new period sets the range, even during a manual override, so Back to auto
+  # restores the current period. A range changed by hand holds until the next one.
+  - if:
+      - condition: template
+        value_template: >-
+          {{ trigger.id in ['period', 'startup']
+             and schedule_entity | length > 0
+             and is_state(schedule_entity, 'on')
+             and (follow_entity | length == 0 or is_state(follow_entity, 'on'))
+             and state_attr(schedule_entity, 'heat_below') is number
+             and state_attr(schedule_entity, 'cool_above') is number }}
+    then:
+      - action: input_number.set_value
+        continue_on_error: true
+        target:
+          entity_id: !input heat_below
+        data:
+          value: "{{ state_attr(schedule_entity, 'heat_below') }}"
+      - action: input_number.set_value
+        continue_on_error: true
+        target:
+          entity_id: !input cool_above
+        data:
+          value: "{{ state_attr(schedule_entity, 'cool_above') }}"
+
   - condition: state
     entity_id: !input manual_override
     state: "off"
+
+  # One report can carry a new room temperature and a change made on the thermostat.
+  # Leave a mismatch to the run queued behind this one, which can tell them apart.
+  - condition: template
+    value_template: >-
+      {% if trigger.id != 'temperature' %}true{% else %}
+      {% set l = state_attr(thermostat, 'target_temp_low') %}{% set h = state_attr(thermostat, 'target_temp_high') %}
+      {{ (states(thermostat) == states(commanded_mode) or states(commanded_mode) in ['', 'unknown'])
+         and (l is none or (l | float(0) - states(heat_below) | float(0)) | abs < tolerance)
+         and (h is none or (h | float(0) - states(cool_above) | float(0)) | abs < tolerance) }}
+      {% endif %}
 
   - variables:
       mode_now: "{{ states(thermostat) }}"
@@ -154,9 +216,15 @@ actions:
       high: "{{ states(cool_above) | float(0) }}"
       heat_ok: "{{ is_state(heat_allowed, 'on') }}"
       cool_ok: "{{ is_state(cool_allowed, 'on') }}"
+      # Separate from the allow toggles, so a seasonal block survives an Off period.
+      scheduled_off: >-
+        {{ schedule_entity | length > 0
+           and is_state(schedule_entity, 'on')
+           and (follow_entity | length == 0 or is_state(follow_entity, 'on'))
+           and state_attr(schedule_entity, 'off') == true }}
       desired: >-
         {% if cur is none or low <= 0 or high <= 0 %}{{ mode_now }}
-        {% elif not heat_ok and not cool_ok %}off
+        {% elif scheduled_off or (not heat_ok and not cool_ok) %}off
         {% elif cur | float < low and heat_ok %}heat
         {% elif cur | float > high and cool_ok %}cool
         {% elif mode_now == 'heat' and heat_ok %}heat
@@ -165,24 +233,29 @@ actions:
         {% else %}cool{% endif %}
 
   - condition: template
-    value_template: "{{ mode_now in ['off', 'heat', 'cool', 'emergency_heating'] and low > 0 and high > 0 }}"
+    value_template: >-
+      {{ (mode_now in ['off', 'heat', 'cool', 'emergency_heating']
+          or (trigger.id == 'resume' and mode_now not in ['unavailable', 'unknown']))
+         and low > 0 and high > 0 }}
 
   # Keep the thermostat's setpoints equal to the range.
   - if:
       - condition: template
         value_template: >-
-          {{ (state_attr(thermostat, 'target_temp_low') | float(0) - low) | abs >= 0.3
-             or (state_attr(thermostat, 'target_temp_high') | float(0) - high) | abs >= 0.3 }}
+          {% set l = state_attr(thermostat, 'target_temp_low') %}{% set h = state_attr(thermostat, 'target_temp_high') %}
+          {{ l is not none and h is not none
+             and ((l | float(0) - low) | abs >= tolerance or (h | float(0) - high) | abs >= tolerance) }}
     then:
       - action: climate.set_temperature
+        continue_on_error: true
         target:
           entity_id: !input thermostat
         data:
           target_temp_low: "{{ low }}"
           target_temp_high: "{{ high }}"
       - wait_template: >-
-          {{ (state_attr(thermostat, 'target_temp_low') | float(0) - low) | abs < 0.3
-             and (state_attr(thermostat, 'target_temp_high') | float(0) - high) | abs < 0.3 }}
+          {{ (state_attr(thermostat, 'target_temp_low') | float(0) - low) | abs < tolerance
+             and (state_attr(thermostat, 'target_temp_high') | float(0) - high) | abs < tolerance }}
         timeout:
           seconds: "{{ settle_time }}"
         continue_on_timeout: true

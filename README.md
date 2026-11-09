@@ -17,6 +17,7 @@ Set a range, for example 68° to 75°. The automation writes both numbers to the
 - Heat and Cool buttons allow or block each mode. Blocking cooling in winter keeps it off.
 - Changes made on the thermostat are detected and kept. The card shows a Manual banner with a Back to auto button.
 - Bar or dial layout, chosen per thermostat. Drag the handles or use the + and − buttons.
+- A 24-hour schedule per thermostat. Each period has its own range or turns the thermostat off.
 - Each thermostat collapses to a single row showing the room temperature and current state.
 - Works in narrow dashboard columns and on phones.
 - Visual editor, which can also create the helpers each thermostat needs.
@@ -33,6 +34,12 @@ Bar and dial layouts:
 
 <p align="center">
   <img src="docs/images/layouts-dark.png" width="840" alt="Bar layout and dial layout side by side">
+</p>
+
+The Schedule tab. Green is the comfort range, and gray is a period with the thermostat off:
+
+<p align="center">
+  <img src="docs/images/schedule-dark.png" width="420" alt="Schedule tab showing the comfort range across 24 hours and a list of periods">
 </p>
 
 Collapsed rows:
@@ -72,7 +79,7 @@ The automation runs whenever the room temperature, the range or the allow button
 
 The automation turns the thermostat off only when heat and cooling are both disallowed. It turns it back on, in heat or cool, when one of them is allowed again. While the room is inside the range the thermostat stays in heat or cool and idles at its setpoint.
 
-It only acts when the thermostat is in `off`, `heat`, `cool` or `emergency_heating`. In any other mode (`auto`, `heat_cool`, `dry`, `fan_only`) the automation does nothing until the thermostat is put back into one of those.
+It only acts when the thermostat is in `off`, `heat`, `cool` or `emergency_heating`. In any other mode (`auto`, `heat_cool`, `dry`, `fan_only`) the automation does nothing, with one exception: Back to auto moves the thermostat to heat, cool or off according to the rules above.
 
 ### Manual override
 
@@ -84,7 +91,28 @@ Example: the range is 14° to 24° and someone sets 20° on the remote. The ther
 
 The settle time is there because some thermostats confirm commands slowly. It can be changed in the automation.
 
+## Schedule
+
+The Schedule tab divides the day into periods. Each period has a start time and either a range or Off, and runs until the next period starts. The same day repeats all week. Drag a handle on the ribbon to move a start time, or select a period to edit it.
+
+To set one up:
+
+1. Open the Schedule tab and select **Create schedule**. This creates `schedule.<name>_schedule` and `input_boolean.<name>_follow_schedule`. An admin account is required.
+2. Edit the automation for that thermostat and choose those two helpers under **Schedule** and **Follow schedule**.
+
+The periods are stored in the schedule helper, so the schedule runs without the dashboard open. Until the automation is linked to the schedule, the card shows the range as held and periods do not change it.
+
+| Situation | Behavior |
+|---|---|
+| A period starts | Its range is written to *heat below* and *cool above*. |
+| An Off period is active | The thermostat is off. Heat allowed and Cool allowed are not changed. |
+| The range is changed during a period | The new range holds until the next period. Resume on the card ends it early. |
+| Manual override is on | The override stays on. Back to auto restores the current period. |
+| Follow schedule is off | The range stays as set, and the schedule is ignored. |
+
 ### Limiting heating and cooling to certain hours
+
+An Off period on the Schedule tab does this. To control it from your own automation instead, use the allow toggles.
 
 *Heat allowed* and *cool allowed* are ordinary `input_boolean` helpers, so any automation can switch them. With both off, the thermostat is turned off. For example, with a [schedule helper](https://www.home-assistant.io/integrations/schedule/) named `schedule.downstairs_climate_hours`:
 
@@ -93,6 +121,9 @@ alias: Downstairs climate hours
 triggers:
   - trigger: state
     entity_id: schedule.downstairs_climate_hours
+    to:
+      - "on"
+      - "off"
 actions:
   - action: "input_boolean.turn_{{ trigger.to_state.state }}"
     target:
@@ -101,10 +132,12 @@ actions:
         - input_boolean.downstairs_cool_allowed
 ```
 
+This turns both toggles on each time the window opens, which clears a block set by hand. To keep cooling blocked for a season, remove that toggle from the automation.
+
 ## Requirements
 
-- Home Assistant 2024.10 or later.
-- A `climate` entity with `heat` and `cool` modes and separate heat and cool setpoints (`target_temp_low` and `target_temp_high`). Thermostats and air conditioners with a single `temperature` setpoint are not supported yet.
+- Home Assistant 2024.10 or later. The Schedule tab requires 2025.3 or later.
+- A `climate` entity with `heat` and `cool` modes that reports separate heat and cool setpoints (`target_temp_low` and `target_temp_high`) in both heat and cool modes. Entities that report them only in `heat_cool` mode can be switched between modes, but the range is not written to them. Thermostats and air conditioners with a single `temperature` setpoint are not supported yet.
 
 °C and °F are both supported. The card follows the unit system set in Home Assistant and picks matching defaults for the dial scale, step and gap.
 
@@ -114,7 +147,9 @@ The card, helpers and blueprint can all be installed from the Home Assistant UI,
 
 ### Card
 
-HACS or the Home Assistant Marketplace: add this repository as a custom repository of type **Dashboard**, then download **Temperate**.
+In the Home Assistant Marketplace (HACS on versions before 2026.11), search for **Temperate** and download it.
+
+If it isn't listed yet, add this repository as a custom repository of type **Dashboard**, then download **Temperate**.
 
 Manual: copy `temperate-card.js` to `config/www/temperate-card/` and add a dashboard resource:
 
@@ -140,6 +175,8 @@ https://github.com/xman2000/temperate-card/blob/main/blueprints/temperate_change
 ```
 
 Create one automation per thermostat from **Temperate changeover**.
+
+The Marketplace updates the card only. To get a new version of the blueprint, open it under **Settings → Automations & scenes → Blueprints** and select **Re-import blueprint**. Existing automations pick up the new version.
 
 ## Helpers
 
@@ -216,7 +253,7 @@ Per thermostat:
 | `entity` | Climate entity |
 | `name` | Display name. Defaults to the entity name. |
 | `temperature_sensor` | Sensor to show in place of the thermostat's own reading |
-| `heat_allowed`, `cool_allowed`, `manual_override`, `heat_below`, `cool_above` | Helper to use in place of the default name |
+| `heat_allowed`, `cool_allowed`, `manual_override`, `heat_below`, `cool_above`, `commanded_mode`, `schedule`, `follow_schedule` | Helper to use in place of the default name |
 
 ## Theming
 

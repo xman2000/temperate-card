@@ -71,6 +71,15 @@
       ui('upstairs', true, 'bar');
       return [{ entities: [{ entity: 'climate.upstairs_thermostat', name: 'Upstairs' }] }];
     },
+    // The ribbon, with one period open for editing.
+    schedule() {
+      zone('downstairs', 'Downstairs', { mode: 'cool', cur: 71, low: 68, high: 74, action: 'idle' });
+      put('schedule.downstairs_schedule', 'on', { editable: true, period: 'Evening', heat_below: 68, cool_above: 74 });
+      put('input_boolean.downstairs_follow_schedule', 'on');
+      localStorage.setItem('temperate:climate.downstairs_thermostat', JSON.stringify({ open: true, view: 'bar', tab: 'schedule' }));
+      return [{ entities: [{ entity: 'climate.downstairs_thermostat', name: 'Downstairs' }] }];
+    },
+    scheduleedit() { return scenes.schedule().map((c) => ({ ...c, edit: 0 })); },
     // Both layouts next to each other.
     layouts() {
       zone('downstairs', 'Downstairs', { mode: 'cool', cur: 74, low: 68, high: 75, action: 'idle' });
@@ -95,13 +104,22 @@
   localStorage.clear();
   const configs = scenes[q.get('scene') || 'hero']();
   const width = q.get('width') || '420';
-  const hass = { states, config: { unit_system: { temperature: '°F' } }, callService: () => Promise.resolve() };
+  const block = (from, to, period, low, high) => ({ from, to, data: low ? { period, heat_below: low, cool_above: high } : { period, off: true } });
+  const day = [
+    block('00:00:00', '06:30:00', 'Night', 62, 78), block('06:30:00', '09:00:00', 'Morning', 68, 75), block('09:00:00', '17:00:00', 'Away'),
+    block('17:00:00', '22:30:00', 'Evening', 68, 74), block('22:30:00', '23:59:59.999999', 'Night', 62, 78),
+  ];
+  const week = Object.fromEntries(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((d) => [d, day]));
+  const callWS = (m) => Promise.resolve(m.service === 'get_schedule' ? { response: { [m.target.entity_id]: week } } : {});
+  const hass = { states, config: { unit_system: { temperature: '°F' } }, callService: () => Promise.resolve(), callWS };
   const s = document.createElement('script');
   s.src = '../../temperate-card.js';
   s.onload = () => {
-    for (const { width: w, ...cfg } of configs) {
+    for (const { width: w, edit, ...cfg } of configs) {
       const card = document.createElement('temperate-card');
       card.style.width = `${w || width}px`;
+      card._now = () => ({ day: 'monday', min: 1180 });
+      card._scheds = { 'climate.downstairs_thermostat': { periods: null, edit: edit ?? null } };
       card.setConfig({ type: 'custom:temperate-card', ...cfg });
       document.getElementById('wrap').appendChild(card);
       card.hass = hass;

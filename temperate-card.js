@@ -1,6 +1,6 @@
 // Temperate card: one comfort range per zone, heat/cool as permissions,
 // sticky manual override. Pairs with the "Temperate changeover" blueprint.
-const VERSION = '1.1.1';
+const VERSION = '1.2.0';
 
 const ARM = '<path d="M12 12V2.5M9.6 4.4L12 6.6l2.4-2.2M10.2 7.6L12 9.2l1.8-1.6"/>';
 const ICON = {
@@ -47,7 +47,37 @@ button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 
 .banner p { margin: 0; display: flex; gap: 10px; font-size: 13px; line-height: 1.45; }
 .banner svg { flex-shrink: 0; color: var(--temperate-manual); }
 .resume { height: 40px; border-radius: 10px; border: 0; background: var(--temperate-manual); color: #3A2E00 !important; font-size: 14px; font-weight: 500; }
-.toprow { display: flex; justify-content: flex-end; }
+.toprow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.nxt { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-radius: 10px; background: var(--temperate-surface); font-size: 13px; }
+.nxt .then { color: var(--secondary-text-color); font-size: 12px; white-space: nowrap; }
+.nxt.held { background: ${mix('var(--temperate-ok)', 14)}; }
+.nxt button { border: 0; background: none; padding: 0; color: var(--primary-color); font-size: 13px; }
+.ribbon svg { display: block; width: 100%; touch-action: none; border-radius: 6px; }
+.saxis { display: flex; justify-content: space-between; margin-top: 3px; font-size: 12px; }
+.slist { display: flex; flex-direction: column; }
+.srow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 2px; background: none; border: 0; border-top: 1px solid ${mix('var(--primary-text-color)', 28)}; text-align: left; font-size: 14px; }
+.srow:disabled { cursor: default; }
+.srow .stime { width: 76px; flex-shrink: 0; font-size: 13px; }
+.srow .sname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow.now .sname { color: var(--temperate-ok); }
+.sedit { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 14px; }
+.sfields { display: flex; gap: 8px; }
+.sfields label { flex: 1; min-width: 0; font-size: 11px; color: var(--secondary-text-color); }
+.sfields input { display: block; width: 100%; box-sizing: border-box; height: 36px; margin-top: 3px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--temperate-surface); color: var(--primary-text-color); font: inherit; font-size: 14px; color-scheme: light dark; }
+.switchrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 0; background: none; border: 0; text-align: left; font-size: 14px; }
+.switchrow small { display: block; font-size: 12px; color: var(--secondary-text-color); }
+.sw { position: relative; flex-shrink: 0; width: 36px; height: 20px; border-radius: 10px; background: var(--temperate-surface-2); transition: background .2s; }
+.sw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--secondary-text-color); transition: left .2s; }
+.sw.on { background: var(--temperate-ok); }
+.sw.on::after { left: 18px; background: #fff; }
+.sadd { height: 40px; border-radius: 10px; border: 0; background: var(--temperate-surface-2); color: var(--primary-text-color); font-size: 14px; font-weight: 500; }
+.sremove { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--error-color); font-size: 13px; }
+.sempty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
+.sempty b { font-size: 15px; font-weight: 500; color: var(--primary-text-color); }
+.screate { margin-top: 8px; height: 40px; padding: 0 18px; border-radius: 10px; border: 0; background: var(--primary-color); color: var(--text-primary-color, #fff); font-size: 14px; font-weight: 500; }
+.screate:disabled { opacity: .6; cursor: default; }
+.snote { font-size: 12px; color: var(--secondary-text-color); }
+.serr { font-size: 12px; color: var(--error-color); }
 .seg { display: flex; background: var(--temperate-surface); border-radius: 10px; padding: 3px; }
 .seg button { flex: 1; height: 30px; padding: 0 12px; border-radius: 8px; border: 0; background: transparent; color: var(--secondary-text-color); font-size: 12px; }
 .seg button.on { background: var(--temperate-surface-2); color: var(--primary-text-color); }
@@ -114,6 +144,7 @@ const HELPERS = {
   manual_override: ['input_boolean', 'manual_override'],
   heat_below: ['input_number', 'heat_below'],
   cool_above: ['input_number', 'cool_above'],
+  commanded_mode: ['input_text', 'commanded_mode'],
 };
 const zonePrefix = (zone) => zone.entity.split('.')[1].replace(/_thermostat$/, '');
 const helperIds = (zone) => {
@@ -122,14 +153,50 @@ const helperIds = (zone) => {
   for (const [key, [domain, suffix]] of Object.entries(HELPERS)) out[key] = zone[key] || `${domain}.${prefix}_${suffix}`;
   return out;
 };
-// Everything a zone needs to run, including the helper only the blueprint uses.
-const setupIds = (zone) => ({ ...helperIds(zone), commanded_mode: `input_text.${zonePrefix(zone)}_commanded_mode` });
 const HELPER_ICONS = {
   heat_allowed: 'mdi:fire', cool_allowed: 'mdi:snowflake', manual_override: 'mdi:hand-back-right',
   heat_below: 'mdi:thermometer-chevron-down', cool_above: 'mdi:thermometer-chevron-up', commanded_mode: 'mdi:thermostat',
 };
 const zoneList = (config) => (config.entities || (config.entity ? [config.entity] : []))
   .map((z) => (typeof z === 'string' ? { entity: z } : { ...z }));
+
+// The schedule is optional, so these two are not counted among the required helpers.
+const scheduleIds = (zone) => {
+  const prefix = zonePrefix(zone);
+  return { schedule: zone.schedule || `schedule.${prefix}_schedule`, follow_schedule: zone.follow_schedule || `input_boolean.${prefix}_follow_schedule` };
+};
+
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const MAX_PERIODS = 8;
+const SNAP = 15;
+const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+const samePeriod = (a, b) => a.name === b.name && a.off === b.off && a.low === b.low && a.high === b.high;
+const periodData = (p) => ({ period: p.name, ...(p.off ? { off: true } : { heat_below: p.low, cool_above: p.high }) });
+
+// A schedule block can't cross midnight, so a period that does is stored as two.
+const blocksToPeriods = (blocks) => {
+  const list = blocks.map((b) => {
+    const d = b.data || {};
+    return { start: toMin(b.from), name: d.period || '', off: d.off === true, low: d.heat_below, high: d.cool_above };
+  }).sort((a, b) => a.start - b.start);
+  if (list.length > 1 && list[0].start === 0 && samePeriod(list[0], list[list.length - 1])) list.shift();
+  return list;
+};
+const periodsToBlocks = (periods) => {
+  const blocks = periods.map((p, i) => ({
+    from: `${hhmm(p.start)}:00`,
+    to: i + 1 < periods.length ? `${hhmm(periods[i + 1].start)}:00` : '24:00:00',
+    data: periodData(p),
+  }));
+  if (periods[0].start > 0) blocks.unshift({ from: '00:00:00', to: `${hhmm(periods[0].start)}:00`, data: periodData(periods[periods.length - 1]) });
+  return blocks;
+};
+const periodAt = (periods, min) => {
+  let i = periods.length - 1;
+  periods.forEach((p, k) => { if (p.start <= min) i = k; });
+  return { cur: periods[i], next: periods[(i + 1) % periods.length] };
+};
 
 class TemperateCard extends HTMLElement {
   static getStubConfig(hass) {
@@ -149,6 +216,7 @@ class TemperateCard extends HTMLElement {
     this._zones = list.map((c) => {
       if (!c.entity.startsWith('climate.')) throw new Error(`"${c.entity}" is not a climate entity`);
       const h = helperIds(c);
+      const s = scheduleIds(c);
       return {
         entity: c.entity,
         name: c.name,
@@ -158,10 +226,13 @@ class TemperateCard extends HTMLElement {
         heat_below: h.heat_below,
         cool_above: h.cool_above,
         sensor: c.temperature_sensor,
+        schedule: s.schedule,
+        follow: s.follow_schedule,
       };
     });
     this._pending = this._pending || {};
     this._timers = this._timers || {};
+    this._uiCache = {};
     this._sig = null;
     if (this._root) this._render();
   }
@@ -170,7 +241,13 @@ class TemperateCard extends HTMLElement {
     this._hass = hass;
     if (!this._root) this._build();
     const sig = this._signature();
-    if (sig !== this._sig) { this._sig = sig; this._render(); }
+    // Redrawing would take the cursor out of a schedule field mid-edit.
+    if (sig !== this._sig && !this._typing()) { this._sig = sig; this._render(); }
+  }
+
+  _typing() {
+    const a = this._root && this._root.activeElement;
+    return !!a && a.tagName === 'INPUT';
   }
 
   getCardSize() { return 1 + this._zones.length * 2; }
@@ -181,6 +258,7 @@ class TemperateCard extends HTMLElement {
     this._root.innerHTML = `<style>${STYLE}</style><ha-card></ha-card>`;
     this._card = this._root.querySelector('ha-card');
     this._root.addEventListener('click', (e) => this._onClick(e));
+    this._root.addEventListener('change', (e) => this._onChange(e));
     this._root.addEventListener('pointerdown', (e) => this._onDown(e));
     this.addEventListener('pointermove', (e) => this._onMove(e));
     this.addEventListener('pointerup', () => this._onUp());
@@ -189,7 +267,7 @@ class TemperateCard extends HTMLElement {
 
   _signature() {
     const h = this._hass;
-    return JSON.stringify(this._zones.map((z) => [z.entity, z.heat_allowed, z.cool_allowed, z.override, z.heat_below, z.cool_above, z.sensor]
+    return JSON.stringify(this._zones.map((z) => [z.entity, z.heat_allowed, z.cool_allowed, z.override, z.heat_below, z.cool_above, z.sensor, z.schedule, z.follow]
       .map((e) => { const s = e && h.states[e]; return s ? [s.state, s.last_updated] : null; })));
   }
 
@@ -241,21 +319,154 @@ class TemperateCard extends HTMLElement {
     else if (a.hvac_action === 'heating') act = 'heating';
     else if (a.hvac_action === 'cooling') act = 'cooling';
     else if (!manual && !heatOk && !coolOk) act = 'off';
+    const sched = this._schedModel(z, manual, rangeLow, rangeHigh);
     return {
       z, st, a, unit, step, gap, dmin, dmax, mode, act, manual, auto: !manual, heatOk, coolOk,
       cur: curRaw, low, high, savedLow: rangeLow, savedHigh: rangeHigh, useHelpers: !manual && rangeLow != null && rangeHigh != null,
       name: z.name || a.friendly_name || z.entity,
       ui: this._ui(z.entity),
+      sched,
     };
+  }
+
+  _schedState(z) {
+    if (!this._scheds) this._scheds = {};
+    if (!this._scheds[z.entity]) this._scheds[z.entity] = { periods: null, edit: null };
+    return this._scheds[z.entity];
+  }
+
+  _schedModel(z, manual, rangeLow, rangeHigh) {
+    const h = this._hass;
+    const entity = h.states[z.schedule];
+    const s = this._schedState(z);
+    const periods = entity && s.periods && s.periods.length ? s.periods : null;
+    const following = !!entity && (!h.states[z.follow] || h.states[z.follow].state === 'on');
+    const at = periods ? periodAt(periods, this._now().min) : {};
+    // The period changes the helpers only at its start, so a difference is a hand-set hold.
+    const held = following && !!at.cur && !at.cur.off && !manual && rangeLow != null && (rangeLow !== at.cur.low || rangeHigh !== at.cur.high);
+    return {
+      entity, s, periods, following, held, ...at,
+      editable: !!entity && entity.attributes.editable !== false && (!h.user || h.user.is_admin),
+    };
+  }
+
+  // Wall-clock time where Home Assistant is, which may not be where this browser is.
+  _now() {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: this._hass.config.time_zone, weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const get = (type) => parts.find((p) => p.type === type).value;
+    return { day: get('weekday').toLowerCase(), min: +get('hour') * 60 + +get('minute') };
+  }
+
+  _clock(min, opts = { minute: '2-digit' }) {
+    const l = this._hass.locale || {};
+    const h12 = l.time_format === '12' ? { hour12: true } : l.time_format === '24' ? { hour12: false } : {};
+    return new Date(2000, 0, 1, Math.floor(min / 60), min % 60).toLocaleTimeString(l.language, { hour: 'numeric', ...opts, ...h12 });
+  }
+
+  // Re-reads the schedule when its entity changes. The entity only carries the
+  // current block, so the whole day has to come from the action.
+  async _loadSchedule(z) {
+    const h = this._hass;
+    const entity = h.states[z.schedule];
+    const s = this._schedState(z);
+    if (!entity) { s.periods = null; s.key = null; return; }
+    if (s.key === entity.last_updated || s.saving || this._drag || !h.callWS) return;
+    s.key = entity.last_updated;
+    try {
+      const r = await h.callWS({ type: 'call_service', domain: 'schedule', service: 'get_schedule', target: { entity_id: z.schedule }, return_response: true });
+      const week = r.response[z.schedule];
+      const blocks = week[this._now().day] || [];
+      s.periods = blocksToPeriods(blocks);
+      s.varies = DAYS.some((d) => JSON.stringify(week[d] || []) !== JSON.stringify(blocks));
+      s.error = null;
+    } catch (e) {
+      s.error = `Couldn't read the schedule: ${(e && e.message) || e}`;
+    }
+    if (!this._typing()) this._render();
+  }
+
+  // Applies an edit straight away and saves it once the changes stop.
+  _schedEdit(z, k, mutate) {
+    const s = this._schedState(z);
+    const periods = s.periods.map((p) => ({ ...p }));
+    const target = periods[k];
+    mutate(target, periods);
+    periods.sort((a, b) => a.start - b.start);
+    if (s.edit === k) s.edit = periods.indexOf(target);
+    s.periods = periods;
+    this._queueSave(z);
+    this._render();
+  }
+
+  _queueSave(z) {
+    const s = this._schedState(z);
+    s.saving = true;
+    clearTimeout(s.timer);
+    s.timer = setTimeout(() => this._saveSchedule(z), 700);
+  }
+
+  async _saveSchedule(z) {
+    const h = this._hass;
+    const s = this._schedState(z);
+    s.timer = null;
+    try {
+      if (!s.item) {
+        const [reg, list] = await Promise.all([
+          h.callWS({ type: 'config/entity_registry/get', entity_id: z.schedule }),
+          h.callWS({ type: 'schedule/list' }),
+        ]);
+        s.item = list.find((i) => i.id === reg.unique_id);
+      }
+      const blocks = periodsToBlocks(s.periods);
+      await h.callWS({ type: 'schedule/update', schedule_id: s.item.id, name: s.item.name, ...(s.item.icon ? { icon: s.item.icon } : {}), ...Object.fromEntries(DAYS.map((d) => [d, blocks])) });
+      s.error = null;
+      s.varies = false;
+    } catch (e) {
+      s.error = `Couldn't save the schedule: ${(e && e.message) || e}`;
+    }
+    s.saving = !!s.timer;
+    this._render();
+  }
+
+  async _createSchedule(z, m) {
+    const h = this._hass;
+    const s = this._schedState(z);
+    if (s.creating) return;
+    s.creating = true;
+    s.error = null;
+    this._render();
+    const isF = m.unit.includes('F');
+    const q = (v) => Math.round(v / m.step) * m.step;
+    const low = q(m.low ?? (isF ? 68 : 20)), high = q(m.high ?? (isF ? 75 : 24));
+    const min = m.a.min_temp ?? -100, max = m.a.max_temp ?? 200;
+    const periods = [
+      { start: 390, name: 'Day', off: false, low, high },
+      { start: 1320, name: 'Night', off: false, low: Math.max(min, low - (isF ? 4 : 2)), high: Math.min(max, high + (isF ? 3 : 2)) },
+    ];
+    const label = (id) => { const w = id.split('.')[1].replace(/_/g, ' '); return w[0].toUpperCase() + w.slice(1); };
+    try {
+      const blocks = periodsToBlocks(periods);
+      await h.callWS({ type: 'schedule/create', name: label(z.schedule), icon: 'mdi:calendar-clock', ...Object.fromEntries(DAYS.map((d) => [d, blocks])) });
+      if (!h.states[z.follow]) {
+        await h.callWS({ type: 'input_boolean/create', name: label(z.follow), icon: 'mdi:calendar-check' });
+        await h.callService('input_boolean', 'turn_on', { entity_id: z.follow });
+      }
+      s.created = true;
+    } catch (e) {
+      s.error = `Couldn't create the schedule: ${(e && e.message) || e}`;
+    }
+    s.creating = false;
+    this._render();
   }
 
   _fmt(v, m) {
     if (v == null || isNaN(v)) return '–';
-    return m.step >= 1 ? String(Math.round(v)) : (Math.round(v * 2) / 2).toFixed(1).replace(/\.0$/, '');
+    return m.step >= 1 ? String(Math.round(v)) : (Math.round(v / m.step) * m.step).toFixed(2).replace(/\.?0+$/, '');
   }
 
   _render() {
     if (!this._card || !this._hass) return;
+    this._zones.forEach((z) => this._loadSchedule(z));
     const title = this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : '';
     this._card.innerHTML = title + this._zones.map((z, i) => {
       const m = this._model(z);
@@ -273,10 +484,12 @@ class TemperateCard extends HTMLElement {
     if (m.act === 'waiting') sub = m.mode === 'unavailable' ? 'thermostat unavailable' : 'for the thermostat to report';
     else if (m.act === 'heating') sub = `to ${f(m.low)}${deg}`;
     else if (m.act === 'cooling') sub = `to ${f(m.high)}${deg}`;
+    else if (m.act === 'off' && !m.manual && m.sched.following && m.sched.cur && m.sched.cur.off) sub = `until ${this._clock(m.sched.next.start)}`;
     else if (m.act === 'off') sub = m.manual ? 'set on the thermostat' : (!m.heatOk && !m.coolOk ? 'heat and cool blocked' : 'off');
     else sub = m.auto ? `${f(m.low)}–${f(m.high)}${deg}` : `holding ${f(holding)}${deg}`;
     const ovDesc = m.mode === 'off' ? 'set to Off' : m.mode === 'heat' ? `Heat to ${f(m.low)}${deg}` : m.mode === 'cool' ? `Cool to ${f(m.high)}${deg}` : `set to ${esc(m.mode.replace('_', ' '))}`;
-    const restore = m.savedLow && m.savedHigh ? ` · restore ${f(m.savedLow)}–${f(m.savedHigh)}${deg}` : '';
+    const period = m.sched.following && m.sched.cur && !m.sched.cur.off && m.sched.cur.low === m.savedLow && m.sched.cur.high === m.savedHigh ? `${esc(m.sched.cur.name)} ` : '';
+    const restore = m.savedLow && m.savedHigh ? ` · restore ${period}${f(m.savedLow)}–${f(m.savedHigh)}${deg}` : '';
     const open = m.ui.open;
     const head = `
       <button class="head" data-act="toggle" data-z="${i}" aria-expanded="${open}" aria-label="${esc(m.name)}: ${label}, ${f(m.cur)} degrees">
@@ -297,6 +510,7 @@ class TemperateCard extends HTMLElement {
         <p>${ICON.hand}<span>Changed on the thermostat: ${ovDesc}. Automation is paused until you switch it back.</span></p>
         <button class="resume" data-act="resume" data-z="${i}">Back to auto${restore}</button>
       </div>` : '';
+    const onSchedule = m.ui.tab === 'schedule';
     const view = m.ui.view === 'dial' ? this._dialHtml(m, i, heatLit, coolLit, C, label) : this._barHtml(m, i, heatLit, coolLit);
     const controls = m.auto ? `
       <div class="allow">
@@ -319,12 +533,109 @@ class TemperateCard extends HTMLElement {
       </button>` : '';
     return `<div class="zone open a-${m.act}${m.manual ? ' manual' : ''}">${head}
       <div class="body">${banner}
-        <div class="toprow"><div class="seg" role="group" aria-label="Layout">
+        <div class="toprow"><div class="seg" role="group" aria-label="Section">
+          <button class="${onSchedule ? '' : 'on'}" data-act="tab" data-tab="control" data-z="${i}">Control</button>
+          <button class="${onSchedule ? 'on' : ''}" data-act="tab" data-tab="schedule" data-z="${i}">Schedule</button>
+        </div>${onSchedule ? '' : `<div class="seg" role="group" aria-label="Layout">
           <button class="${m.ui.view !== 'dial' ? 'on' : ''}" data-act="view" data-view="bar" data-z="${i}">Bar</button>
           <button class="${m.ui.view === 'dial' ? 'on' : ''}" data-act="view" data-view="dial" data-z="${i}">Dial</button>
-        </div></div>
-        ${view}${controls}${fan}
+        </div>`}</div>
+        ${onSchedule ? this._schedHtml(m, i) : `${m.manual ? '' : this._nextHtml(m, i)}${view}${controls}${fan}${this._followHtml(m, i)}`}
       </div></div>`;
+  }
+
+  // What the schedule is doing now and what it does next.
+  _nextHtml(m, i) {
+    const { periods, following, held, cur, next } = m.sched;
+    if (!periods) return '';
+    if (!following) return '<div class="nxt"><span>Schedule paused</span></div>';
+    const f = (v) => this._fmt(v, m);
+    const until = this._clock(next.start);
+    if (held) return `<div class="nxt held"><span>Held at ${f(m.savedLow)}–${f(m.savedHigh)}° until ${until}</span><button data-act="sched-resume" data-z="${i}">Resume</button></div>`;
+    if (cur === next) return `<div class="nxt"><span>${esc(cur.name)} all day</span></div>`;
+    const then = next.off ? 'Off' : `${f(next.low)}–${f(next.high)}°`;
+    return `<div class="nxt"><span>${esc(cur.name)} until ${until}</span><span class="then">then ${esc(next.name)} ${then}</span></div>`;
+  }
+
+  _followHtml(m, i) {
+    if (!m.sched.entity || !this._hass.states[m.z.follow]) return '';
+    return `<button class="switchrow" data-act="sched-follow" data-z="${i}" role="switch" aria-checked="${m.sched.following}">
+        <span>Follow schedule<small>Off keeps the range you set</small></span><span class="sw${m.sched.following ? ' on' : ''}"></span>
+      </button>`;
+  }
+
+  _schedHtml(m, i) {
+    const { entity, s, periods, editable, cur } = m.sched;
+    const error = s.error ? `<div class="serr">${esc(s.error)}</div>` : '';
+    if (!entity) {
+      const admin = !this._hass.user || this._hass.user.is_admin;
+      return `<div class="sempty"><b>Set a schedule</b><span>Give each part of the day its own range, or turn the thermostat off.</span>
+        ${admin ? `<button class="screate" data-act="sched-create" data-z="${i}"${s.creating ? ' disabled' : ''}>${s.creating ? 'Creating…' : 'Create schedule'}</button>` : '<span>Ask an administrator to create one.</span>'}</div>${error}`;
+    }
+    if (!periods) return `${error || '<div class="sempty"><span>Loading schedule…</span></div>'}`;
+    const f = (v) => this._fmt(v, m);
+    const rows = periods.map((p, k) => `
+      <button class="srow${p === cur ? ' now' : ''}" data-act="sched-open" data-k="${k}" data-z="${i}"${editable ? '' : ' disabled'} aria-expanded="${s.edit === k}">
+        <span class="stime">${this._clock(p.start)}</span><span class="sname">${esc(p.name)}</span><span class="srange">${p.off ? 'Off' : `${f(p.low)}–${f(p.high)}°`}</span>
+      </button>${s.edit === k && editable ? this._periodHtml(m, i, p, k) : ''}`).join('');
+    const others = editable ? this._zones.map((z, j) => (j !== i && this._hass.states[z.schedule] ? `<button class="sadd" data-act="sched-copy" data-to="${j}" data-z="${i}">Copy to ${esc(z.name || this._hass.states[z.entity]?.attributes.friendly_name || z.entity)}</button>` : '')).join('') : '';
+    return `${this._nextHtml(m, i)}${this._ribbonHtml(m, i)}
+      ${s.created ? '<div class="snote">Next: choose this schedule in the thermostat\'s Temperate automation.</div>' : ''}
+      ${s.varies ? '<div class="snote">Showing today. Saving applies this day to the whole week.</div>' : ''}${error}
+      <div class="slist">${rows}</div>
+      ${editable && periods.length < MAX_PERIODS ? `<button class="sadd" data-act="sched-add" data-z="${i}">Add period</button>` : ''}${others}`;
+  }
+
+  _ribbonHtml(m, i) {
+    const { periods, editable } = m.sched;
+    const W = 300, H = 96;
+    const x = (min) => min / 1440 * W;
+    const y = (t) => Math.max(0, Math.min(H, (m.dmax - t) / (m.dmax - m.dmin) * H));
+    const segs = periods.map((p, k) => ({ p, a: p.start, b: k + 1 < periods.length ? periods[k + 1].start : 1440 }));
+    if (periods[0].start > 0) segs.unshift({ p: periods[periods.length - 1], a: 0, b: periods[0].start });
+    const rect = (x0, w, top, h, fill, op) => `<rect x="${x0.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" style="fill:${fill};fill-opacity:${op}"/>`;
+    const bands = segs.map(({ p, a, b }) => {
+      const x0 = x(a) + 0.5, w = Math.max(0, x(b) - x(a) - 1);
+      if (p.off) return rect(x0, w, 0, H, 'var(--temperate-off)', 0.3) + (w > 34 ? `<text x="${(x0 + w / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" style="font-size:12px;fill:var(--secondary-text-color)">Off</text>` : '');
+      const lo = y(p.low), hi = y(p.high);
+      // Same colors as the bar, including gray for a blocked mode.
+      return rect(x0, w, 0, hi, m.coolOk ? 'var(--temperate-cool)' : 'var(--temperate-surface-2)', 1)
+        + rect(x0, w, hi, lo - hi, 'var(--temperate-ok)', 1)
+        + rect(x0, w, lo, H - lo, m.heatOk ? 'var(--temperate-heat)' : 'var(--temperate-surface-2)', 1);
+    }).join('');
+    const handles = editable ? periods.map((p, k) => `
+      <g class="handle" data-shandle="${k}" data-z="${i}">
+        <circle cx="${x(p.start).toFixed(1)}" cy="${H / 2}" r="20" style="fill:#000;fill-opacity:0.001"/>
+        <circle cx="${x(p.start).toFixed(1)}" cy="${H / 2}" r="5.5" style="fill:var(--ha-card-background, var(--card-background-color, #1c1c1e));stroke:var(--primary-text-color);stroke-width:1.5"/>
+      </g>`).join('') : '';
+    const now = x(this._now().min);
+    const labels = [0, 360, 720, 1080, 1440].map((t) => `<span>${this._clock(t % 1440, {})}</span>`).join('');
+    return `<div class="ribbon" data-ribbon="${i}">
+        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Comfort range across the day">${bands}
+          <rect x="${(now - 1.5).toFixed(1)}" y="0" width="3" height="${H}" rx="1.5" style="fill:var(--temperate-marker);pointer-events:none"/>${handles}</svg>
+        <div class="saxis">${labels}</div>
+      </div>`;
+  }
+
+  _periodHtml(m, i, p, k) {
+    const f = (v) => this._fmt(v, m);
+    const step = (which, col, lbl, val) => `
+      <div>
+        <button class="round" style="color:${col}" data-act="sched-step" data-which="${which}" data-d="-1" data-k="${k}" data-z="${i}" aria-label="Lower ${lbl.toLowerCase()}">−</button>
+        <span class="mid"><span>${lbl}</span><b style="color:${col}">${f(val)}°</b></span>
+        <button class="round" style="color:${col}" data-act="sched-step" data-which="${which}" data-d="1" data-k="${k}" data-z="${i}" aria-label="Raise ${lbl.toLowerCase()}">+</button>
+      </div>`;
+    return `<div class="sedit">
+        <div class="sfields">
+          <label>Starts<input type="time" step="900" value="${hhmm(p.start)}" data-sfield="start" data-k="${k}" data-z="${i}"></label>
+          <label>Name<input type="text" maxlength="20" value="${esc(p.name)}" data-sfield="name" data-k="${k}" data-z="${i}"></label>
+        </div>
+        ${p.off ? '' : `<div class="steps">${step('low', 'var(--temperate-heat)', 'Heat below', p.low)}${step('high', 'var(--temperate-cool)', 'Cool above', p.high)}</div>`}
+        <button class="switchrow" data-act="sched-off" data-k="${k}" data-z="${i}" role="switch" aria-checked="${p.off}">
+          <span>Turn the thermostat off<small>No heating or cooling in this period</small></span><span class="sw${p.off ? ' on' : ''}"></span>
+        </button>
+        ${m.sched.periods.length > 1 ? `<button class="sremove" data-act="sched-remove" data-k="${k}" data-z="${i}">Remove period</button>` : ''}
+      </div>`;
   }
 
   _barHtml(m, i, heatLit, coolLit) {
@@ -375,7 +686,7 @@ class TemperateCard extends HTMLElement {
         <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="24" style="fill:#000;fill-opacity:0.001"/>
         <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="13" style="fill:${bg};stroke:${col};stroke-width:4"/>
       </g>`;
-    const ovDesc = m.mode === 'heat' ? `Heat to ${f(m.low)}°` : m.mode === 'cool' ? `Cool to ${f(m.high)}°` : 'Off';
+    const ovDesc = m.mode === 'heat' ? `Heat to ${f(m.low)}°` : m.mode === 'cool' ? `Cool to ${f(m.high)}°` : m.mode === 'off' ? 'Off' : esc(m.mode.replace('_', ' '));
     return `
       <div class="dialwrap">
         <div class="dial" data-dial="${i}">
@@ -443,6 +754,47 @@ class TemperateCard extends HTMLElement {
     switch (el.dataset.act) {
       case 'toggle': this._setUi(z.entity, { open: !m.ui.open }); break;
       case 'view': this._setUi(z.entity, { view: el.dataset.view }); break;
+      case 'tab': this._setUi(z.entity, { tab: el.dataset.tab }); break;
+      case 'sched-create': this._createSchedule(z, m); break;
+      case 'sched-follow': h.callService('input_boolean', 'toggle', { entity_id: z.follow }); break;
+      case 'sched-resume':
+        h.callService('input_number', 'set_value', { entity_id: z.heat_below, value: m.sched.cur.low });
+        h.callService('input_number', 'set_value', { entity_id: z.cool_above, value: m.sched.cur.high });
+        break;
+      case 'sched-open': {
+        const s = this._schedState(z), k = +el.dataset.k;
+        s.edit = s.edit === k ? null : k;
+        this._render();
+        break;
+      }
+      case 'sched-step': {
+        const d = +el.dataset.d * m.step, min = m.a.min_temp ?? -100, max = m.a.max_temp ?? 200;
+        this._schedEdit(z, +el.dataset.k, (p) => {
+          if (el.dataset.which === 'low') p.low = Math.min(p.high - m.gap, Math.max(min, p.low + d));
+          else p.high = Math.max(p.low + m.gap, Math.min(max, p.high + d));
+        });
+        break;
+      }
+      case 'sched-off':
+        this._schedEdit(z, +el.dataset.k, (p) => {
+          p.off = !p.off;
+          if (p.low == null) { p.low = m.low; p.high = m.high; }
+        });
+        break;
+      case 'sched-remove': {
+        const k = +el.dataset.k, s = this._schedState(z);
+        s.edit = null;
+        this._schedEdit(z, k, (p, all) => all.splice(k, 1));
+        break;
+      }
+      case 'sched-add': this._addPeriod(z, m); break;
+      case 'sched-copy': {
+        const to = this._zones[+el.dataset.to], s = this._schedState(to);
+        s.periods = m.sched.periods.map((p) => ({ ...p }));
+        this._queueSave(to);
+        this._render();
+        break;
+      }
       case 'step': {
         const d = +el.dataset.d * m.step;
         this._which = el.dataset.which;
@@ -462,7 +814,45 @@ class TemperateCard extends HTMLElement {
     }
   }
 
+  // Splits the longest period in two, so a new one always has room.
+  _addPeriod(z, m) {
+    const { periods } = m.sched;
+    const spans = periods.map((p, k) => ((k + 1 < periods.length ? periods[k + 1].start : 1440 + periods[0].start) - p.start));
+    const k = spans.indexOf(Math.max(...spans));
+    const start = Math.round((periods[k].start + spans[k] / 2) / SNAP) * SNAP % 1440;
+    if (periods.some((p) => p.start === start)) return;
+    const s = this._schedState(z);
+    const source = periods[k];
+    const added = { ...source, start, name: `Period ${periods.length + 1}` };
+    s.periods = [...periods.map((p) => ({ ...p })), added].sort((a, b) => a.start - b.start);
+    s.edit = s.periods.indexOf(added);
+    this._queueSave(z);
+    this._render();
+  }
+
+  _onChange(e) {
+    const field = e.target.dataset.sfield;
+    if (!field) return;
+    const z = this._zones[+e.target.dataset.z], k = +e.target.dataset.k;
+    const s = this._schedState(z);
+    if (field === 'name') {
+      const name = e.target.value.trim();
+      if (name) this._schedEdit(z, k, (p) => { p.name = name; }); else this._render();
+    } else {
+      const start = e.target.value ? toMin(e.target.value) : -1;
+      if (start < 0 || s.periods.some((p, j) => j !== k && p.start === start)) this._render();
+      else this._schedEdit(z, k, (p) => { p.start = start; });
+    }
+  }
+
   _onDown(e) {
+    const sh = e.target.closest('[data-shandle]');
+    if (sh) {
+      e.preventDefault();
+      this._drag = { z: +sh.dataset.z, period: +sh.dataset.shandle };
+      this.setPointerCapture(e.pointerId);
+      return;
+    }
     const g = e.target.closest('[data-handle]');
     if (!g) return;
     e.preventDefault();
@@ -473,6 +863,7 @@ class TemperateCard extends HTMLElement {
 
   _onMove(e) {
     if (!this._drag) return;
+    if (this._drag.period != null) { this._movePeriod(e); return; }
     const dial = this._root.querySelector(`[data-dial="${this._drag.z}"]`);
     const m = this._model(this._zones[this._drag.z]);
     if (!dial || !m) return;
@@ -487,9 +878,29 @@ class TemperateCard extends HTMLElement {
     if (this._drag.which === 'low') this._setRange(m, t, m.high, 'later'); else this._setRange(m, m.low, t, 'later');
   }
 
+  _movePeriod(e) {
+    const { z: i, period: k } = this._drag;
+    const ribbon = this._root.querySelector(`[data-ribbon="${i}"] svg`);
+    if (!ribbon) return;
+    const s = this._schedState(this._zones[i]);
+    const b = ribbon.getBoundingClientRect();
+    const lo = k > 0 ? s.periods[k - 1].start + SNAP : 0;
+    const hi = k + 1 < s.periods.length ? s.periods[k + 1].start - SNAP : 1440 - SNAP;
+    const start = Math.max(lo, Math.min(hi, Math.round((e.clientX - b.left) / b.width * 1440 / SNAP) * SNAP));
+    if (start === s.periods[k].start) return;
+    s.periods = s.periods.map((p, j) => (j === k ? { ...p, start } : p));
+    this._drag.moved = true;
+    this._render();
+  }
+
   _onUp() {
     if (!this._drag) return;
     const z = this._zones[this._drag.z];
+    if (this._drag.period != null) {
+      if (this._drag.moved) this._queueSave(z);
+      this._drag = null;
+      return;
+    }
     this._drag = null;
     this._send(z.entity);
   }
@@ -510,6 +921,9 @@ const LABELS = {
   manual_override: 'Manual override',
   heat_below: 'Heat below',
   cool_above: 'Cool above',
+  commanded_mode: 'Commanded mode',
+  schedule: 'Schedule',
+  follow_schedule: 'Follow schedule',
 };
 
 const CARD_SCHEMA = [
@@ -534,7 +948,8 @@ const CARD_SCHEMA = [
 ];
 
 const zoneSchema = (zone) => {
-  const auto = zone.entity ? helperIds({ entity: zone.entity }) : {};
+  const auto = zone.entity ? { ...helperIds({ entity: zone.entity }), ...scheduleIds({ entity: zone.entity }) } : {};
+  const optional = { schedule: 'schedule', follow_schedule: 'input_boolean' };
   return [
     { name: 'entity', required: true, selector: { entity: { filter: { domain: 'climate' } } } },
     {
@@ -545,7 +960,7 @@ const zoneSchema = (zone) => {
     },
     {
       type: 'expandable', title: 'Helpers (found automatically)', flatten: true,
-      schema: Object.entries(HELPERS).map(([key, [domain]]) => ({
+      schema: [...Object.entries(HELPERS).map(([key, [domain]]) => [key, domain]), ...Object.entries(optional)].map(([key, domain]) => ({
         name: key,
         selector: { entity: { filter: { domain } } },
         helper: auto[key] ? `Default: ${auto[key]}` : undefined,
@@ -664,7 +1079,7 @@ class TemperateCardEditor extends HTMLElement {
       let cls = 'status', html = '';
       if (zone.entity && this._hass && zone.entity.startsWith('climate.')) {
         const job = (this._jobs || {})[i];
-        const missing = Object.values(setupIds(zone)).filter((id) => !this._hass.states[id]);
+        const missing = Object.values(helperIds(zone)).filter((id) => !this._hass.states[id]);
         if (missing.length) {
           const busy = job && job.busy, error = job && job.error;
           cls = `status ${error ? 'error' : 'missing'}`;
@@ -712,15 +1127,19 @@ class TemperateCardEditor extends HTMLElement {
     const renamed = {};
     try {
       const created = [];
-      for (const [key, id] of Object.entries(setupIds(zone))) {
+      let failed;
+      for (const [key, id] of Object.entries(helperIds(zone))) {
         if (hass.states[id]) continue;
         const [domain, objectId] = id.split('.');
         // HA builds the entity id from the name, so name it after the id we want.
         const words = objectId.replace(/_/g, ' ');
         const msg = { type: `${domain}/create`, name: words[0].toUpperCase() + words.slice(1), icon: HELPER_ICONS[key] };
         if (domain === 'input_number') Object.assign(msg, { min, max, step, mode: 'box', unit_of_measurement: unit });
-        const item = await hass.callWS(msg);
-        created.push({ key, id, domain, uid: item.id });
+        // Keep what was made so far: a retry skips existing helpers, so they must be seeded now.
+        try {
+          const item = await hass.callWS(msg);
+          created.push({ key, id, domain, uid: item.id });
+        } catch (e) { failed = e; break; }
       }
       // The entity id can still differ from the one asked for (an old registry entry
       // may hold it), so look up what HA actually registered.
@@ -728,10 +1147,11 @@ class TemperateCardEditor extends HTMLElement {
       for (const c of created) {
         const entry = registry.find((r) => r.platform === c.domain && r.unique_id === c.uid);
         const made = entry ? entry.entity_id : c.id;
-        if (made !== c.id && c.key !== 'commanded_mode') renamed[c.key] = made;
+        if (made !== c.id) renamed[c.key] = made;
         if (c.domain === 'input_number') await hass.callService('input_number', 'set_value', { entity_id: made, value: seed[c.key] });
         else if (seed[c.key]) await hass.callService('input_boolean', 'turn_on', { entity_id: made });
       }
+      if (failed) throw failed;
       this._jobs = { ...this._jobs, [i]: { done: true } };
     } catch (e) {
       this._jobs = { ...this._jobs, [i]: { error: (e && e.message) || String(e) } };
