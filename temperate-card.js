@@ -1,6 +1,6 @@
 // Temperate card: one comfort range per zone, heat/cool as permissions,
 // sticky manual override. Pairs with the "Temperate changeover" blueprint.
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 
 const ARM = '<path d="M12 12V2.5M9.6 4.4L12 6.6l2.4-2.2M10.2 7.6L12 9.2l1.8-1.6"/>';
 const ICON = {
@@ -275,7 +275,7 @@ class TemperateCard extends HTMLElement {
     else if (m.act === 'cooling') sub = `to ${f(m.high)}${deg}`;
     else if (m.act === 'off') sub = m.manual ? 'set on the thermostat' : (!m.heatOk && !m.coolOk ? 'heat and cool blocked' : 'off');
     else sub = m.auto ? `${f(m.low)}–${f(m.high)}${deg}` : `holding ${f(holding)}${deg}`;
-    const ovDesc = m.mode === 'off' ? 'set to Off' : m.mode === 'heat' ? `Heat to ${f(m.low)}${deg}` : m.mode === 'cool' ? `Cool to ${f(m.high)}${deg}` : `set to ${m.mode.replace('_', ' ')}`;
+    const ovDesc = m.mode === 'off' ? 'set to Off' : m.mode === 'heat' ? `Heat to ${f(m.low)}${deg}` : m.mode === 'cool' ? `Cool to ${f(m.high)}${deg}` : `set to ${esc(m.mode.replace('_', ' '))}`;
     const restore = m.savedLow && m.savedHigh ? ` · restore ${f(m.savedLow)}–${f(m.savedHigh)}${deg}` : '';
     const open = m.ui.open;
     const head = `
