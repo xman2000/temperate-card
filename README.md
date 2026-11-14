@@ -139,7 +139,7 @@ This turns both toggles on each time the window opens, which clears a block set 
 ## Requirements
 
 - Home Assistant 2024.10 or later. The Schedule tab requires 2025.3 or later.
-- A `climate` entity with `heat` and `cool` modes that reports separate heat and cool setpoints (`target_temp_low` and `target_temp_high`) in both heat and cool modes. Entities that report them only in `heat_cool` mode can be switched between modes, but the range is not written to them. Thermostats and air conditioners with a single `temperature` setpoint are not supported yet.
+- A `climate` entity with `heat` and `cool` modes. Devices exposing `target_temp_low` and `target_temp_high` in those modes receive both setpoints; devices exposing only `temperature` receive the target for the active heating or cooling mode. Devices exposing neither cannot have their range synchronized.
 
 °C and °F are both supported. The card follows the unit system set in Home Assistant and picks matching defaults for the dial scale, step and gap.
 
