@@ -3,7 +3,8 @@ blueprint:
   description: >-
     Switches a heat/cool thermostat between Heat and Cool from one comfort range.
     Home Assistant owns the range: "heat below" and "cool above" live in two
-    input_numbers and are copied to the thermostat's heat and cool setpoints.
+    input_numbers and are copied to the thermostat's heat and cool setpoints,
+    or to its active single setpoint when only one is available.
     Two booleans allow or block each mode. If the thermostat's mode or setpoints
     move away from what this automation asked for (someone used the thermostat
     itself), the manual override turns on and the automation leaves it alone
@@ -123,6 +124,10 @@ triggers:
     id: setpoint
   - trigger: state
     entity_id: !input thermostat
+    attribute: temperature
+    id: setpoint
+  - trigger: state
+    entity_id: !input thermostat
     to: ~
     id: mode
   - trigger: state
@@ -163,9 +168,15 @@ actions:
     then:
       - wait_template: >-
           {% set l = state_attr(thermostat, 'target_temp_low') %}{% set h = state_attr(thermostat, 'target_temp_high') %}
+          {% set single = state_attr(thermostat, 'temperature') %}
+          {% set mode = states(thermostat) %}
+          {% set expected = states(heat_below) | float(0) if mode == 'heat' else states(cool_above) | float(0) %}
+          {% set single_ok = l is not none or h is not none or single is none
+             or mode not in ['heat', 'cool'] or (single | float(0) - expected) | abs < tolerance %}
           {{ (states(thermostat) == states(commanded_mode) or states(commanded_mode) in ['', 'unknown'])
              and (l is none or (l | float(0) - states(heat_below) | float(0)) | abs < tolerance)
-             and (h is none or (h | float(0) - states(cool_above) | float(0)) | abs < tolerance) }}
+             and (h is none or (h | float(0) - states(cool_above) | float(0)) | abs < tolerance)
+             and single_ok }}
         timeout:
           seconds: "{{ settle_time }}"
         continue_on_timeout: true
@@ -258,9 +269,15 @@ actions:
     value_template: >-
       {% if trigger.id != 'temperature' %}true{% else %}
       {% set l = state_attr(thermostat, 'target_temp_low') %}{% set h = state_attr(thermostat, 'target_temp_high') %}
+      {% set single = state_attr(thermostat, 'temperature') %}
+      {% set mode = states(thermostat) %}
+      {% set expected = states(heat_below) | float(0) if mode == 'heat' else states(cool_above) | float(0) %}
+      {% set single_ok = l is not none or h is not none or single is none
+         or mode not in ['heat', 'cool'] or (single | float(0) - expected) | abs < tolerance %}
       {{ (states(thermostat) == states(commanded_mode) or states(commanded_mode) in ['', 'unknown'])
          and (l is none or (l | float(0) - states(heat_below) | float(0)) | abs < tolerance)
-         and (h is none or (h | float(0) - states(cool_above) | float(0)) | abs < tolerance) }}
+         and (h is none or (h | float(0) - states(cool_above) | float(0)) | abs < tolerance)
+         and single_ok }}
       {% endif %}
 
   - variables:
@@ -335,6 +352,31 @@ actions:
         data:
           hvac_mode: "{{ desired }}"
       - wait_template: "{{ is_state(thermostat, desired) }}"
+        timeout:
+          seconds: "{{ settle_time }}"
+        continue_on_timeout: true
+  # Single-setpoint thermostats need the target for the active mode.
+  # Apply after changing modes, since some devices change their attributes.
+  - if:
+      - condition: template
+        value_template: >-
+          {% set l = state_attr(thermostat, 'target_temp_low') %}
+          {% set h = state_attr(thermostat, 'target_temp_high') %}
+          {% set single = state_attr(thermostat, 'temperature') %}
+          {% set expected = low if desired == 'heat' else high %}
+          {{ desired in ['heat', 'cool'] and is_state(thermostat, desired)
+             and l is none and h is none and single is not none
+             and (single | float(0) - expected) | abs >= tolerance }}
+    then:
+      - action: climate.set_temperature
+        continue_on_error: true
+        target:
+          entity_id: !input thermostat
+        data:
+          temperature: "{{ low if desired == 'heat' else high }}"
+      - wait_template: >-
+          {{ (state_attr(thermostat, 'temperature') | float(0)
+              - (low if desired == 'heat' else high)) | abs < tolerance }}
         timeout:
           seconds: "{{ settle_time }}"
         continue_on_timeout: true
